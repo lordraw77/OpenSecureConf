@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+cryptography
+pydantic
+sqlalchemy
+python-dotenv
