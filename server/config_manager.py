@@ -14,18 +14,20 @@ Classes:
 import os
 import secrets
 import base64
+import json
+
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, Column, String, Text, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import json
+
 
 Base = declarative_base()
 
 
-class ConfigurationModel(Base):
+class ConfigurationModel(Base):  # pylint: disable=too-few-public-methods
     """
     SQLAlchemy ORM model for storing encrypted configurations.
 
@@ -35,7 +37,8 @@ class ConfigurationModel(Base):
         encrypted_value (str): Fernet-encrypted JSON value
         category (str): Optional category for grouping configurations
     """
-    __tablename__ = 'configurations'
+
+    __tablename__ = "configurations"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(255), unique=True, nullable=False, index=True)
@@ -57,7 +60,7 @@ class EncryptionManager:
         cipher (Fernet): Initialized Fernet cipher instance
     """
 
-    def __init__(self, user_key: str, salt_file: str = 'encryption.salt'):
+    def __init__(self, user_key: str, salt_file: str = "encryption.salt"):
         """
         Initialize encryption manager with user key.
 
@@ -74,7 +77,7 @@ class EncryptionManager:
         """
         Load existing salt from file or create new random salt.
 
-        Creates a cryptographically secure 64-byte (512-bit) salt using 
+        Creates a cryptographically secure 64-byte (512-bit) salt using
         secrets.token_bytes() on first run. This exceeds NIST recommendations
         of 128 bits and provides maximum collision resistance.
 
@@ -82,12 +85,12 @@ class EncryptionManager:
             bytes: 64-byte salt for key derivation
         """
         if os.path.exists(self.salt_file):
-            with open(self.salt_file, 'rb') as f:
+            with open(self.salt_file, "rb") as f:
                 return f.read()
         else:
             # Generate random 64-byte (512-bit) salt component
             salt = secrets.token_bytes(64)
-            with open(self.salt_file, 'wb') as f:
+            with open(self.salt_file, "wb") as f:
                 f.write(salt)
             return salt
 
@@ -154,7 +157,7 @@ class ConfigurationManager:
         Session (sessionmaker): SQLAlchemy session factory
     """
 
-    def __init__(self, db_path: str = 'configurations.db', user_key: str = None):
+    def __init__(self, db_path: str = "configurations.db", user_key: str = None):
         """
         Initialize thread-safe configuration manager with database and encryption.
 
@@ -172,18 +175,18 @@ class ConfigurationManager:
 
         # SQLite thread-safe configuration with connection pooling
         self.engine = create_engine(
-            f'sqlite:///{db_path}',
+            f"sqlite:///{db_path}",
             echo=False,
             connect_args={
-                'check_same_thread': False,  # Allow multi-thread access
-                'timeout': 30  # Wait up to 30 seconds for lock release
+                "check_same_thread": False,  # Allow multi-thread access
+                "timeout": 30,  # Wait up to 30 seconds for lock release
             },
             pool_pre_ping=True,  # Verify connections before using
             pool_size=10,  # Connection pool size
-            max_overflow=20  # Extra connections when pool is full
+            max_overflow=20,  # Extra connections when pool is full
         )
         Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+        self.session_factory = sessionmaker(bind=self.engine)
 
     def create(self, key: str, value: dict, category: str = None) -> dict:
         """
@@ -201,7 +204,7 @@ class ConfigurationManager:
         Raises:
             ValueError: If configuration with the same key already exists
         """
-        session = self.Session()
+        session = self.session_factory()
         try:
             # Check if key already exists
             existing = session.query(ConfigurationModel).filter_by(key=key).first()
@@ -212,18 +215,16 @@ class ConfigurationManager:
             encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
 
             config = ConfigurationModel(
-                key=key,
-                encrypted_value=encrypted_value,
-                category=category
+                key=key, encrypted_value=encrypted_value, category=category
             )
             session.add(config)
             session.commit()
 
             return {
-                'id': config.id,
-                'key': config.key,
-                'category': config.category,
-                'value': value
+                "id": config.id,
+                "key": config.key,
+                "category": config.category,
+                "value": value,
             }
         finally:
             session.close()
@@ -242,7 +243,7 @@ class ConfigurationManager:
         Raises:
             ValueError: If configuration key not found
         """
-        session = self.Session()
+        session = self.session_factory()
         try:
             config = session.query(ConfigurationModel).filter_by(key=key).first()
             if not config:
@@ -252,10 +253,10 @@ class ConfigurationManager:
             decrypted_value = self.encryption_manager.decrypt(config.encrypted_value)
 
             return {
-                'id': config.id,
-                'key': config.key,
-                'category': config.category,
-                'value': json.loads(decrypted_value)
+                "id": config.id,
+                "key": config.key,
+                "category": config.category,
+                "value": json.loads(decrypted_value),
             }
         finally:
             session.close()
@@ -276,7 +277,7 @@ class ConfigurationManager:
         Raises:
             ValueError: If configuration key not found
         """
-        session = self.Session()
+        session = self.session_factory()
         try:
             config = session.query(ConfigurationModel).filter_by(key=key).first()
             if not config:
@@ -290,10 +291,10 @@ class ConfigurationManager:
             session.commit()
 
             return {
-                'id': config.id,
-                'key': config.key,
-                'category': config.category,
-                'value': value
+                "id": config.id,
+                "key": config.key,
+                "category": config.category,
+                "value": value,
             }
         finally:
             session.close()
@@ -312,7 +313,7 @@ class ConfigurationManager:
         Raises:
             ValueError: If configuration key not found
         """
-        session = self.Session()
+        session = self.session_factory()
         try:
             config = session.query(ConfigurationModel).filter_by(key=key).first()
             if not config:
@@ -336,7 +337,7 @@ class ConfigurationManager:
         Returns:
             list[dict]: List of configurations, each with keys: id, key, category, value
         """
-        session = self.Session()
+        session = self.session_factory()
         try:
             query = session.query(ConfigurationModel)
             if category:
@@ -345,13 +346,17 @@ class ConfigurationManager:
             configs = query.all()
             result = []
             for config in configs:
-                decrypted_value = self.encryption_manager.decrypt(config.encrypted_value)
-                result.append({
-                    'id': config.id,
-                    'key': config.key,
-                    'category': config.category,
-                    'value': json.loads(decrypted_value)
-                })
+                decrypted_value = self.encryption_manager.decrypt(
+                    config.encrypted_value
+                )
+                result.append(
+                    {
+                        "id": config.id,
+                        "key": config.key,
+                        "category": config.category,
+                        "value": json.loads(decrypted_value),
+                    }
+                )
             return result
         finally:
             session.close()

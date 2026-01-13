@@ -5,29 +5,26 @@ A Python client library for interacting with the OpenSecureConf API,
 which provides encrypted configuration management with multithreading support.
 """
 
+from typing import Any, Dict, List, Optional
+
 import requests
-from typing import Optional, Dict, Any, List
-from requests.exceptions import RequestException, HTTPError, ConnectionError, Timeout
+from requests.exceptions import Timeout
 
 
 class OpenSecureConfError(Exception):
     """Base exception for OpenSecureConf client errors."""
-    pass
 
 
 class AuthenticationError(OpenSecureConfError):
     """Raised when authentication fails (invalid or missing user key)."""
-    pass
 
 
 class ConfigurationNotFoundError(OpenSecureConfError):
     """Raised when a requested configuration key does not exist."""
-    pass
 
 
 class ConfigurationExistsError(OpenSecureConfError):
     """Raised when attempting to create a configuration that already exists."""
-    pass
 
 
 class OpenSecureConfClient:
@@ -53,11 +50,7 @@ class OpenSecureConfClient:
     """
 
     def __init__(
-        self,
-        base_url: str,
-        user_key: str,
-        timeout: int = 30,
-        verify_ssl: bool = True
+        self, base_url: str, user_key: str, timeout: int = 30, verify_ssl: bool = True
     ):
         """
         Initialize the OpenSecureConf client.
@@ -79,17 +72,11 @@ class OpenSecureConfClient:
         self.timeout = timeout
         self.verify_ssl = verify_ssl
         self._session = requests.Session()
-        self._session.headers.update({
-            "x-user-key": self.user_key,
-            "Content-Type": "application/json"
-        })
+        self._session.headers.update(
+            {"x-user-key": self.user_key, "Content-Type": "application/json"}
+        )
 
-    def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        **kwargs
-    ) -> Any:
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> Any:
         """
         Make an HTTP request to the API with error handling.
 
@@ -116,17 +103,21 @@ class OpenSecureConfClient:
             response = self._session.request(method, url, **kwargs)
 
             if response.status_code == 401:
-                raise AuthenticationError("Authentication failed: invalid or missing user key")
-            elif response.status_code == 404:
+                raise AuthenticationError(
+                    "Authentication failed: invalid or missing user key"
+                )
+            if response.status_code == 404:
                 raise ConfigurationNotFoundError("Configuration not found")
-            elif response.status_code == 400:
+            if response.status_code == 400:
                 error_detail = response.json().get("detail", "Bad request")
                 if "already exists" in error_detail.lower():
                     raise ConfigurationExistsError(error_detail)
                 raise OpenSecureConfError(f"Bad request: {error_detail}")
-            elif response.status_code >= 400:
+            if response.status_code >= 400:
                 error_detail = response.json().get("detail", "Unknown error")
-                raise OpenSecureConfError(f"API error ({response.status_code}): {error_detail}")
+                raise OpenSecureConfError(
+                    f"API error ({response.status_code}): {error_detail}"
+                )
 
             if response.status_code == 204 or not response.content:
                 return None
@@ -134,9 +125,11 @@ class OpenSecureConfClient:
             return response.json()
 
         except (ConnectionError, Timeout) as e:
-            raise ConnectionError(f"Failed to connect to {self.base_url}: {str(e)}")
+            raise ConnectionError(
+                f"Failed to connect to {self.base_url}: {str(e)}"
+            ) from e
         except ValueError as e:
-            raise OpenSecureConfError(f"Invalid JSON response: {str(e)}")
+            raise OpenSecureConfError(f"Invalid JSON response: {str(e)}") from e
 
     def get_service_info(self) -> Dict[str, Any]:
         """
@@ -153,10 +146,7 @@ class OpenSecureConfClient:
         return self._make_request("GET", "/")
 
     def create(
-        self,
-        key: str,
-        value: Dict[str, Any],
-        category: Optional[str] = None
+        self, key: str, value: Dict[str, Any], category: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a new encrypted configuration entry.
@@ -187,11 +177,7 @@ class OpenSecureConfClient:
         if not key or len(key) > 255:
             raise ValueError("Key must be between 1 and 255 characters")
 
-        payload = {
-            "key": key,
-            "value": value,
-            "category": category
-        }
+        payload = {"key": key, "value": value, "category": category}
 
         return self._make_request("POST", "/configs", json=payload)
 
@@ -216,10 +202,7 @@ class OpenSecureConfClient:
         return self._make_request("GET", f"/configs/{key}")
 
     def update(
-        self,
-        key: str,
-        value: Dict[str, Any],
-        category: Optional[str] = None
+        self, key: str, value: Dict[str, Any], category: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Update an existing configuration entry with new encrypted value.
@@ -241,10 +224,7 @@ class OpenSecureConfClient:
             ...     value={"host": "db.example.com", "port": 5432}
             ... )
         """
-        payload = {
-            "value": value,
-            "category": category
-        }
+        payload = {"value": value, "category": category}
 
         return self._make_request("PUT", f"/configs/{key}", json=payload)
 
@@ -312,5 +292,5 @@ __all__ = [
     "OpenSecureConfError",
     "AuthenticationError",
     "ConfigurationNotFoundError",
-    "ConfigurationExistsError"
+    "ConfigurationExistsError",
 ]

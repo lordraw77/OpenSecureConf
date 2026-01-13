@@ -5,23 +5,24 @@ A web-based graphical interface for managing encrypted configurations.
 Built with Streamlit for easy deployment and usage.
 """
 
-import streamlit as st
-import requests
 from typing import Dict, List, Optional
 import json
+
+import streamlit as st
+import requests
 import pandas as pd
-from datetime import datetime
 
 # Page configuration
 st.set_page_config(
     page_title="OpenSecureConf Manager",
     page_icon="🔐",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # Custom CSS
-st.markdown("""
+st.markdown(
+    """
 <style>
     .main-header {
         font-size: 2.5rem;
@@ -59,7 +60,9 @@ st.markdown("""
         margin: 1rem 0;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 class OpenSecureConfClient:
@@ -67,10 +70,7 @@ class OpenSecureConfClient:
 
     def __init__(self, base_url: str, user_key: str):
         self.base_url = base_url.rstrip("/")
-        self.headers = {
-            "x-user-key": user_key,
-            "Content-Type": "application/json"
-        }
+        self.headers = {"x-user-key": user_key, "Content-Type": "application/json"}
 
     def get_service_info(self) -> Dict:
         """Get service information"""
@@ -78,31 +78,30 @@ class OpenSecureConfClient:
             response = requests.get(f"{self.base_url}/", timeout=5)
             response.raise_for_status()
             return response.json()
-        except Exception as e:
-            raise Exception(f"Failed to connect: {str(e)}")
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            raise ConnectionError(f"Failed to connect: {str(e)}") from e
 
     def create(self, key: str, value: Dict, category: Optional[str] = None) -> Dict:
         """Create a new configuration"""
         payload = {"key": key, "value": value, "category": category}
         response = requests.post(
-            f"{self.base_url}/configs",
-            headers=self.headers,
-            json=payload,
-            timeout=10
+            f"{self.base_url}/configs", headers=self.headers, json=payload, timeout=10
         )
         if response.status_code != 201:
-            raise Exception(f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}")
+            raise requests.exceptions.HTTPError(
+                f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}"
+            )
         return response.json()
 
     def read(self, key: str) -> Dict:
         """Read a configuration"""
         response = requests.get(
-            f"{self.base_url}/configs/{key}",
-            headers=self.headers,
-            timeout=10
+            f"{self.base_url}/configs/{key}", headers=self.headers, timeout=10
         )
         if response.status_code != 200:
-            raise Exception(f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}")
+            raise requests.exceptions.HTTPError(
+                f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}"
+            )
         return response.json()
 
     def update(self, key: str, value: Dict, category: Optional[str] = None) -> Dict:
@@ -112,48 +111,49 @@ class OpenSecureConfClient:
             f"{self.base_url}/configs/{key}",
             headers=self.headers,
             json=payload,
-            timeout=10
+            timeout=10,
         )
         if response.status_code != 200:
-            raise Exception(f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}")
+            raise requests.exceptions.HTTPError(
+                f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}"
+            )
         return response.json()
 
     def delete(self, key: str) -> Dict:
         """Delete a configuration"""
         response = requests.delete(
-            f"{self.base_url}/configs/{key}",
-            headers=self.headers,
-            timeout=10
+            f"{self.base_url}/configs/{key}", headers=self.headers, timeout=10
         )
         if response.status_code != 200:
-            raise Exception(f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}")
+            raise requests.exceptions.HTTPError(
+                f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}"
+            )
         return response.json()
 
     def list_all(self, category: Optional[str] = None) -> List[Dict]:
         """List all configurations"""
         params = {"category": category} if category else {}
         response = requests.get(
-            f"{self.base_url}/configs",
-            headers=self.headers,
-            params=params,
-            timeout=10
+            f"{self.base_url}/configs", headers=self.headers, params=params, timeout=10
         )
         if response.status_code != 200:
-            raise Exception(f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}")
+            raise requests.exceptions.HTTPError(
+                f"Error {response.status_code}: {response.json().get('detail', 'Unknown error')}"
+            )
         return response.json()
 
 
 def initialize_session_state():
     """Initialize session state variables"""
-    if 'connected' not in st.session_state:
+    if "connected" not in st.session_state:
         st.session_state.connected = False
-    if 'client' not in st.session_state:
+    if "client" not in st.session_state:
         st.session_state.client = None
-    if 'configs' not in st.session_state:
+    if "configs" not in st.session_state:
         st.session_state.configs = []
-    if 'selected_config' not in st.session_state:
+    if "selected_config" not in st.session_state:
         st.session_state.selected_config = None
-    if 'refresh_trigger' not in st.session_state:
+    if "refresh_trigger" not in st.session_state:
         st.session_state.refresh_trigger = 0
 
 
@@ -167,15 +167,15 @@ def show_connection_sidebar():
 
     base_url = st.sidebar.text_input(
         "API URL",
-        value=st.session_state.get('base_url', 'http://localhost:9000'),
-        help="OpenSecureConf server URL"
+        value=st.session_state.get("base_url", "http://localhost:9000"),
+        help="OpenSecureConf server URL",
     )
 
     user_key = st.sidebar.text_input(
         "User Key",
         type="password",
-        value=st.session_state.get('user_key', ''),
-        help="Encryption key (min 8 characters)"
+        value=st.session_state.get("user_key", ""),
+        help="Encryption key (min 8 characters)",
     )
 
     col1, col2 = st.sidebar.columns(2)
@@ -197,7 +197,11 @@ def show_connection_sidebar():
 
                     st.sidebar.success("✅ Connected!")
                     st.rerun()
-                except Exception as e:
+                except (
+                    requests.exceptions.RequestException,
+                    ConnectionError,
+                    ValueError,
+                ) as e:
                     st.sidebar.error(f"❌ Connection failed: {str(e)}")
 
     with col2:
@@ -210,8 +214,10 @@ def show_connection_sidebar():
     if st.session_state.connected:
         st.sidebar.markdown("---")
         st.sidebar.success("🟢 **Status:** Connected")
-        info = st.session_state.get('service_info', {})
-        st.sidebar.info(f"**Service:** {info.get('service', 'N/A')}\n**Version:** {info.get('version', 'N/A')}")
+        info = st.session_state.get("service_info", {})
+        st.sidebar.info(
+            f"**Service:** {info.get('service', 'N/A')}\n**Version:** {info.get('version', 'N/A')}"
+        )
     else:
         st.sidebar.markdown("---")
         st.sidebar.warning("🔴 **Status:** Disconnected")
@@ -223,7 +229,7 @@ def load_configurations(category_filter: Optional[str] = None):
         configs = st.session_state.client.list_all(category=category_filter)
         st.session_state.configs = configs
         return configs
-    except Exception as e:
+    except (requests.exceptions.RequestException, ValueError) as e:
         st.error(f"Failed to load configurations: {str(e)}")
         return []
 
@@ -234,15 +240,13 @@ def show_configurations_list():
 
     # Filter by category
     configs = st.session_state.configs
-    categories = list(set([c.get('category', 'None') for c in configs]))
+    categories = list(set([c.get("category", "None") for c in configs]))
     categories.insert(0, "All")
 
     col1, col2 = st.columns([3, 1])
     with col1:
         selected_category = st.selectbox(
-            "Filter by Category",
-            categories,
-            key="category_filter"
+            "Filter by Category", categories, key="category_filter"
         )
     with col2:
         if st.button("🔄 Refresh", use_container_width=True):
@@ -269,17 +273,24 @@ def show_configurations_list():
                 st.markdown(f"**🔑 {config['key']}**")
 
             with col2:
-                category = config.get('category', 'None')
-                st.markdown(f'<span class="category-badge">{category}</span>', unsafe_allow_html=True)
+                category = config.get("category", "None")
+                st.markdown(
+                    f'<span class="category-badge">{category}</span>',
+                    unsafe_allow_html=True,
+                )
 
             with col3:
-                if st.button("👁️ View", key=f"view_{config['id']}", use_container_width=True):
+                if st.button(
+                    "👁️ View", key=f"view_{config['id']}", use_container_width=True
+                ):
                     st.session_state.selected_config = config
                     st.session_state.show_modal = "view"
                     st.rerun()
 
             with col4:
-                if st.button("🗑️", key=f"delete_{config['id']}", use_container_width=True):
+                if st.button(
+                    "🗑️", key=f"delete_{config['id']}", use_container_width=True
+                ):
                     st.session_state.selected_config = config
                     st.session_state.show_modal = "delete"
                     st.rerun()
@@ -300,7 +311,7 @@ def show_create_form():
             "Value",
             value='{"example": "value"}',
             height=150,
-            help="Enter configuration data as JSON"
+            help="Enter configuration data as JSON",
         )
 
         col1, col2 = st.columns([1, 4])
@@ -314,16 +325,14 @@ def show_create_form():
                 try:
                     value = json.loads(value_json)
                     result = st.session_state.client.create(
-                        key=key,
-                        value=value,
-                        category=category if category else None
+                        key=key, value=value, category=category if category else None
                     )
                     st.success(f"✅ Configuration '{key}' created successfully!")
                     st.session_state.refresh_trigger = 1
                     st.rerun()
                 except json.JSONDecodeError:
                     st.error("Invalid JSON format")
-                except Exception as e:
+                except (requests.exceptions.RequestException, ValueError) as e:
                     st.error(f"Error: {str(e)}")
 
 
@@ -336,7 +345,7 @@ def show_update_form():
         st.info("No configurations available to update")
         return
 
-    config_keys = [c['key'] for c in configs]
+    config_keys = [c["key"] for c in configs]
     selected_key = st.selectbox("Select Configuration", config_keys)
 
     if selected_key:
@@ -346,20 +355,21 @@ def show_update_form():
 
             with st.form("update_form"):
                 category = st.text_input(
-                    "Category",
-                    value=current_config.get('category', '')
+                    "Category", value=current_config.get("category", "")
                 )
 
                 st.markdown("**Configuration Value (JSON)**")
                 value_json = st.text_area(
                     "Value",
-                    value=json.dumps(current_config['value'], indent=2),
-                    height=200
+                    value=json.dumps(current_config["value"], indent=2),
+                    height=200,
                 )
 
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    submitted = st.form_submit_button("💾 Update", use_container_width=True)
+                    submitted = st.form_submit_button(
+                        "💾 Update", use_container_width=True
+                    )
 
                 if submitted:
                     try:
@@ -367,22 +377,27 @@ def show_update_form():
                         result = st.session_state.client.update(
                             key=selected_key,
                             value=value,
-                            category=category if category else None
+                            category=category if category else None,
                         )
-                        st.success(f"✅ Configuration '{selected_key}' updated successfully!")
+                        st.success(
+                            f"✅ Configuration '{selected_key}' updated successfully!"
+                        )
                         st.session_state.refresh_trigger = 1
                         st.rerun()
                     except json.JSONDecodeError:
                         st.error("Invalid JSON format")
-                    except Exception as e:
+                    except (requests.exceptions.RequestException, ValueError) as e:
                         st.error(f"Error: {str(e)}")
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
             st.error(f"Error loading configuration: {str(e)}")
 
 
 def show_view_modal():
     """Show configuration details modal"""
-    if st.session_state.get('show_modal') == 'view' and st.session_state.selected_config:
+    if (
+        st.session_state.get("show_modal") == "view"
+        and st.session_state.selected_config
+    ):
         config = st.session_state.selected_config
 
         st.subheader(f"🔍 Configuration Details: {config['key']}")
@@ -394,7 +409,7 @@ def show_view_modal():
             st.markdown(f"**Category:** {config.get('category', 'None')}")
 
         st.markdown("**Value:**")
-        st.json(config['value'])
+        st.json(config["value"])
 
         col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
@@ -411,23 +426,30 @@ def show_view_modal():
 
 def show_delete_modal():
     """Show delete confirmation modal"""
-    if st.session_state.get('show_modal') == 'delete' and st.session_state.selected_config:
+    if (
+        st.session_state.get("show_modal") == "delete"
+        and st.session_state.selected_config
+    ):
         config = st.session_state.selected_config
 
-        st.warning(f"⚠️ Are you sure you want to delete configuration **'{config['key']}'**?")
+        st.warning(
+            f"⚠️ Are you sure you want to delete configuration **'{config['key']}'**?"
+        )
         st.markdown("This action cannot be undone!")
 
         col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
             if st.button("🗑️ Delete", use_container_width=True, type="primary"):
                 try:
-                    st.session_state.client.delete(config['key'])
-                    st.success(f"✅ Configuration '{config['key']}' deleted successfully!")
+                    st.session_state.client.delete(config["key"])
+                    st.success(
+                        f"✅ Configuration '{config['key']}' deleted successfully!"
+                    )
                     st.session_state.show_modal = None
                     st.session_state.selected_config = None
                     st.session_state.refresh_trigger = 1
                     st.rerun()
-                except Exception as e:
+                except (requests.exceptions.RequestException, ValueError) as e:
                     st.error(f"Error: {str(e)}")
         with col2:
             if st.button("❌ Cancel", use_container_width=True):
@@ -447,7 +469,7 @@ def show_stats():
     total = len(configs)
     categories = {}
     for config in configs:
-        cat = config.get('category', 'None')
+        cat = config.get("category", "None")
         categories[cat] = categories.get(cat, 0) + 1
 
     # Display stats
@@ -460,15 +482,15 @@ def show_stats():
         st.metric("📁 Categories", len(categories))
 
     with col3:
-        most_common = max(categories.items(), key=lambda x: x[1]) if categories else ("None", 0)
+        most_common = (
+            max(categories.items(), key=lambda x: x[1]) if categories else ("None", 0)
+        )
         st.metric("🏆 Most Used Category", f"{most_common[0]} ({most_common[1]})")
 
     # Category distribution
     if len(categories) > 0:
         st.markdown("**Category Distribution**")
-        df = pd.DataFrame([
-            {"Category": k, "Count": v} for k, v in categories.items()
-        ])
+        df = pd.DataFrame([{"Category": k, "Count": v} for k, v in categories.items()])
         st.bar_chart(df.set_index("Category"))
 
 
@@ -480,7 +502,9 @@ def main():
     show_connection_sidebar()
 
     # Main content
-    st.markdown('<h1 class="main-header">🔐 OpenSecureConf Manager</h1>', unsafe_allow_html=True)
+    st.markdown(
+        '<h1 class="main-header">🔐 OpenSecureConf Manager</h1>', unsafe_allow_html=True
+    )
 
     if not st.session_state.connected:
         st.info("👈 Please connect to OpenSecureConf server using the sidebar")
@@ -488,43 +512,49 @@ def main():
 
         # Quick start guide
         st.subheader("🚀 Quick Start")
-        st.markdown("""
+        st.markdown(
+            """
         1. Enter your **OpenSecureConf API URL** (e.g., `http://localhost:9000`)
         2. Enter your **User Key** (minimum 8 characters)
         3. Click **Connect**
         4. Start managing your encrypted configurations!
-        """)
+        """
+        )
 
         # Features
         col1, col2 = st.columns(2)
         with col1:
             st.markdown("### ✨ Features")
-            st.markdown("""
+            st.markdown(
+                """
             - 📋 List all configurations
             - 🔍 View configuration details
             - ➕ Create new configurations
             - ✏️ Update existing configurations
             - 🗑️ Delete configurations
             - 📁 Filter by category
-            """)
+            """
+            )
 
         with col2:
             st.markdown("### 🔒 Security")
-            st.markdown("""
+            st.markdown(
+                """
             - 🔐 End-to-end encryption
             - 🔑 User key authentication
             - 💾 Secure storage
             - 🛡️ HTTPS support
             - 🔄 No data caching
-            """)
+            """
+            )
 
         return
 
     # Show modals if needed
-    if st.session_state.get('show_modal') == 'view':
+    if st.session_state.get("show_modal") == "view":
         show_view_modal()
         st.markdown("---")
-    elif st.session_state.get('show_modal') == 'delete':
+    elif st.session_state.get("show_modal") == "delete":
         show_delete_modal()
         st.markdown("---")
 

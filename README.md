@@ -4,10 +4,27 @@
 
 A complete Python-based solution for encrypted configuration management featuring a FastAPI server with hybrid encryption and a PyPI-published client library. Store, retrieve, and distribute encrypted settings securely with multithreading support and async operations.
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
+## Badges
+### General
+[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/streamlit-1.30+-red?logo=streamlit)](https://streamlit.io/)
 [![PyPI](https://img.shields.io/pypi/v/opensecureconf-client)](https://pypi.org/project/opensecureconf-client/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+### Security & Quality
+![server pylint Score](serverpylint.svg)
+![gui pylint Score](guipylint.svg)
+![client pylint Score](clientpylint.svg)
+![server bandit Score](serverbandit.svg)
+![gui bandit Score](guibandit.svg)
+![client bandit Score](clientbandit.svg)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+### Infrastructure
+[![Docker](https://img.shields.io/badge/docker-ready-blue?logo=docker)](https://www.docker.com/)
+[![SQLAlchemy](https://img.shields.io/badge/sqlalchemy-2.0+-orange?logo=sqlite)](https://www.sqlalchemy.org/)
+[![Encryption](https://img.shields.io/badge/encryption-AES--128--CBC-red)](https://cryptography.io)
 
 ## 🎯 Overview
 

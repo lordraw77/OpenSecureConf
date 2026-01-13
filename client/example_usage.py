@@ -9,7 +9,7 @@ from opensecureconf_client import (
     OpenSecureConfClient,
     AuthenticationError,
     ConfigurationNotFoundError,
-    ConfigurationExistsError
+    ConfigurationExistsError,
 )
 
 
@@ -18,8 +18,7 @@ def main():
 
     # Initialize the client
     client = OpenSecureConfClient(
-        base_url="http://localhost:9000",
-        user_key="my-secure-encryption-key"
+        base_url="http://localhost:9000", user_key="my-secure-encryption-key"
     )
 
     try:
@@ -41,33 +40,25 @@ def main():
                 "host": "localhost",
                 "port": 5432,
                 "database": "myapp",
-                "username": "admin"
+                "username": "admin",
             },
-            category="production"
+            category="production",
         )
         print(f"Created: {db_config['key']} (ID: {db_config['id']})")
 
         # API configuration
         api_config = client.create(
             key="api",
-            value={
-                "base_url": "https://api.example.com",
-                "timeout": 30,
-                "retries": 3
-            },
-            category="production"
+            value={"base_url": "https://api.example.com", "timeout": 30, "retries": 3},
+            category="production",
         )
         print(f"Created: {api_config['key']} (ID: {api_config['id']})")
 
         # Feature flags
         features = client.create(
             key="features",
-            value={
-                "new_ui": True,
-                "beta_features": False,
-                "debug_mode": False
-            },
-            category="settings"
+            value={"new_ui": True, "beta_features": False, "debug_mode": False},
+            category="settings",
         )
         print(f"Created: {features['key']} (ID: {features['id']})")
         print()
@@ -89,8 +80,8 @@ def main():
                 "port": 5432,
                 "database": "myapp",
                 "username": "admin",
-                "ssl": True  # Added new field
-            }
+                "ssl": True,  # Added new field
+            },
         )
         print(f"Updated '{updated['key']}' with new value: {updated['value']}")
         print()
@@ -147,14 +138,12 @@ def context_manager_example():
     print("=== Context Manager Example ===")
 
     with OpenSecureConfClient(
-        base_url="http://localhost:9000",
-        user_key="my-secure-encryption-key"
+        base_url="http://localhost:9000", user_key="my-secure-encryption-key"
     ) as client:
 
         # Create a temporary configuration
         temp = client.create(
-            key="temp_config",
-            value={"expires": "2026-01-12", "data": "temporary"}
+            key="temp_config", value={"expires": "2026-01-12", "data": "temporary"}
         )
         print(f"Created temporary config: {temp['key']}")
 
