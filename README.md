@@ -102,27 +102,54 @@ curl -H "X-API-Key: cluster-secret-key-123" http://localhost:9001/cluster/status
 
 ```
 OpenSecureConf/
-├── server/                          # FastAPI REST API server
-│   ├── api.py                      # REST endpoints (async with clustering)
-│   ├── config_manager.py           # Encryption & database logic
-│   ├── cluster_manager.py          # Cluster management (NEW)
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   ├── docker-compose-replica.yml  # REPLICA cluster setup (NEW)
-│   ├── docker-compose-federated.yml # FEDERATED cluster setup (NEW)
-│   ├── CLUSTER_GUIDE.md            # Clustering documentation (NEW)
-│   ├── CLUSTER_MANAGER_DOCS.md     # Technical API docs (NEW)
-│   ├── cluster_examples.py         # Code examples (NEW)
-│   └── README.md
-│
-├── client/                          # Python client library
-│   ├── opensecureconf_client.py
-│   ├── pyproject.toml              # PyPI package configuration
-│   ├── example_usage.py
-│   ├── README.md
-│   └── dist/                       # Built packages for PyPI
-│
-└── README.md                       # This file
+├── build.config
+├── build.ps1
+├── build.sh
+├── client
+│   ├── example_usage.py
+│   ├── LICENSE
+│   ├── MANIFEST.in
+│   ├── opensecureconf_client.py
+│   ├── PUBLISHING_GUIDE.md
+│   ├── pyproject.toml
+│   ├── README.md
+│   ├── requirements-dev.txt
+│   ├── requirements.txt
+│   ├── setup.py
+│   ├── STRUCTURE.md
+│   └── test_opensecureconf_client.py
+├── clientbandit.svg
+├── clientpylint.svg
+├── configurations.db
+├── docker-build.yml
+├── encryption.salt
+├── gui
+│   ├── docker-compose-gui.yml
+│   ├── Dockerfile
+│   ├── gui.py
+│   ├── GUI_README.md
+│   ├── gui-requirements.txt
+│   └── run-gui.sh
+├── guibandit.svg
+├── guipylint.svg
+├── LICENSE
+├── Makefile
+├── makesvgbandit.sh
+├── makesvgpylint.sh
+├── README.md
+├── server
+│   ├── api.py
+│   ├── cluster_manager.py
+│   ├── config_manager.py
+│   ├── docker-compose-federated.yml
+│   ├── docker-compose-replica.yml
+│   ├── docker-compose.yaml
+│   ├── Dockerfile
+│   ├── README.md
+│   ├── requirements.txt
+│   └── test_example.py
+├── serverbandit.svg
+└── serverpylint.svg
 ```
 
 ## 🌐 Cluster Modes
