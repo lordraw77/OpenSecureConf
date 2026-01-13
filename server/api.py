@@ -1,135 +1,247 @@
+# pylint: disable=broad-except
+# pylint: disable=unused-argument
+# pylint: disable=line-too-long
+# pylint: disable=unused-variable
+# pylint: disable=unused-import
+# pylint: disable=consider-using-with
+# pylint: disable=no-else-return
+# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-positional-arguments
+
 """
-OpenSecureConf - REST API Module
+OpenSecureConf - REST API Module with Clustering Support
 
 FastAPI-based REST API for encrypted configuration management.
-Supports asynchronous operations and concurrent requests via multiple workers.
-
-All endpoints require x-user-key header for encryption/decryption authentication.
+Supports two clustering modes:
+1. REPLICA: Active-active replication with automatic synchronization
+2. FEDERATED: Distributed storage with cross-node queries
 """
 
+import os
 from typing import Optional
 import asyncio
-
-
-from fastapi import FastAPI, HTTPException, Depends, Header
+from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
-from config_manager import ConfigurationManager
 
-# Initialize FastAPI application with metadata
+from config_manager import ConfigurationManager
+from cluster_manager import ClusterManager, ClusterMode
+
+
+from fastapi import FastAPI, HTTPException, Depends, Header, Request,Response
+
+
+# Load environment variables
+HOST_PORT = int(os.getenv("HOST_PORT", "9000"))
+WORKERS = int(os.getenv("WORKERS", "4"))
+DATABASE_PATH = os.getenv("DATABASE_PATH", "configurations.db")
+SALT_FILE_PATH = os.getenv("SALT_FILE_PATH", "encryption.salt")
+MIN_USER_KEY_LENGTH = int(os.getenv("MIN_USER_KEY_LENGTH", "8"))
+API_KEY_REQUIRED = os.getenv("API_KEY_REQUIRED", "false").lower() == "true"
+API_KEY = os.getenv("API_KEY", "your-super-secret-api-key-here")
+HOST=os.getenv("HOST", "127.0.0.1")
+# Cluster configuration
+CLUSTER_ENABLED = os.getenv("CLUSTER_ENABLED", "false").lower() == "true"
+CLUSTER_MODE = os.getenv("CLUSTER_MODE", "replica")  # replica or federated
+CLUSTER_NODE_ID = os.getenv("CLUSTER_NODE_ID", f"node-{HOST_PORT}")
+CLUSTER_NODES = os.getenv("CLUSTER_NODES", "").split(",")  # host:port,host:port
+CLUSTER_SYNC_INTERVAL = int(os.getenv("CLUSTER_SYNC_INTERVAL", "30"))
+
+# Global cluster manager instance
+cluster_manager: Optional[ClusterManager] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):# pylint: disable=redefined-outer-name
+    """Application lifespan manager with salt synchronization"""
+    global cluster_manager #pylint: disable=global-statement
+
+    # Startup
+    if CLUSTER_ENABLED:
+        cluster_manager = ClusterManager(
+            node_id=CLUSTER_NODE_ID,
+            cluster_mode=CLUSTER_MODE,
+            cluster_nodes=CLUSTER_NODES,
+            api_key=API_KEY if API_KEY_REQUIRED else None,
+            sync_interval=CLUSTER_SYNC_INTERVAL
+        )
+        await cluster_manager.start()
+        print(f"✅ Cluster started in {CLUSTER_MODE.upper()} mode")
+        print(f"   Node ID: {CLUSTER_NODE_ID}")
+        print(f"   Cluster nodes: {len(cluster_manager.nodes)}")
+
+        # 🔐 Salt synchronization
+        print("\n🔐 Synchronizing encryption salt...")
+        salt_synced = await cluster_manager.sync_encryption_salt(SALT_FILE_PATH)
+
+        if salt_synced:
+            print("   ✅ Salt synchronized across cluster")
+        else:
+            print("   ⚠️  Salt synchronization incomplete - check cluster connectivity")
+
+    yield
+
+    # Shutdown
+    if cluster_manager:
+        await cluster_manager.stop()
+        print("🛑 Cluster stopped")
+
+
+
+# Initialize FastAPI application
 app = FastAPI(
     title="OpenSecureConf API",
-    description="REST API for encrypted configuration management with multithreading support",
-    version="1.0.0",
+    description="REST API for encrypted configuration management with clustering support",
+    version="2.0.0",
+    lifespan=lifespan
 )
 
-# Pydantic models for request/response validation
 
-
+# Pydantic models
 class ConfigCreate(BaseModel):
     """Model for creating a new configuration entry"""
-
-    key: str = Field(
-        ..., min_length=1, max_length=255, description="Unique configuration key"
-    )
-    value: dict = Field(..., description="Configuration data (will be encrypted)")
-    category: Optional[str] = Field(
-        None, max_length=100, description="Optional category for grouping"
-    )
+    key: str = Field(..., min_length=1, max_length=255)
+    value: dict = Field(...)
+    category: Optional[str] = Field(None, max_length=100)
 
 
 class ConfigUpdate(BaseModel):
     """Model for updating an existing configuration entry"""
-
-    value: dict = Field(..., description="New configuration data (will be encrypted)")
-    category: Optional[str] = Field(
-        None, max_length=100, description="Optional new category"
-    )
+    value: dict = Field(...)
+    category: Optional[str] = Field(None, max_length=100)
 
 
 class ConfigResponse(BaseModel):
     """Model for configuration response"""
-
     id: int
     key: str
     category: Optional[str]
     value: dict
 
 
-# Dependency injection for authentication and ConfigurationManager initialization
+class ClusterStatusResponse(BaseModel):
+    """Model for cluster status response"""
+    enabled: bool
+    mode: Optional[str]
+    node_id: Optional[str]
+    total_nodes: Optional[int]
+    healthy_nodes: Optional[int]
+
+
+# Dependencies
+def validate_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
+    """Validates API key if API_KEY_REQUIRED is enabled"""
+    if API_KEY_REQUIRED:
+        if not x_api_key:
+            raise HTTPException(
+                status_code=403,
+                detail="API key required but missing. Provide X-API-Key header.",
+            )
+        if x_api_key != API_KEY:
+            raise HTTPException(status_code=403, detail="Invalid API key")
 
 
 def get_config_manager(
-    x_user_key: str = Header(..., description="User encryption key")
+    x_user_key: str = Header(..., description="User encryption key"),
+    api_key_validated: None = Depends(validate_api_key),
 ):
-    """
-    Validates user key and returns ConfigurationManager instance.
-
-    Args:
-        x_user_key: User-defined encryption key from HTTP header
-
-    Returns:
-        ConfigurationManager: Initialized manager with user's encryption key
-
-    Raises:
-        HTTPException: If key is missing or too short (min 8 characters)
-    """
-    if not x_user_key or len(x_user_key) < 8:
+    """Returns ConfigurationManager instance with validated user key"""
+    if not x_user_key or len(x_user_key) < MIN_USER_KEY_LENGTH:
         raise HTTPException(
             status_code=401,
-            detail="x-user-key header missing or too short (minimum 8 characters)",
+            detail=
+            f"x-user-key header missing or too short (minimum {MIN_USER_KEY_LENGTH} characters)",
         )
-    return ConfigurationManager(user_key=x_user_key)
+
+    return ConfigurationManager(
+        db_path=DATABASE_PATH, user_key=x_user_key, salt_file=SALT_FILE_PATH
+    )
 
 
 # API Endpoints
-
-
 @app.get("/")
-async def root():
-    """
-    Root endpoint providing API information and available endpoints.
-
-    Returns:
-        dict: Service metadata and endpoint listing
-    """
+async def root(api_key_validated: None = Depends(validate_api_key)):
+    """Root endpoint providing API information"""
     return {
         "service": "OpenSecureConf API",
-        "version": "1.0.0",
-        "features": ["encryption", "multithreading", "async"],
+        "version": "2.0.0",
+        "features": ["encryption", "multithreading", "async", "api-key-auth", "clustering"],
+        "api_key_required": API_KEY_REQUIRED,
+        "cluster_enabled": CLUSTER_ENABLED,
+        "cluster_mode": CLUSTER_MODE if CLUSTER_ENABLED else None,
         "endpoints": {
             "create": "POST /configs",
             "read": "GET /configs/{key}",
             "update": "PUT /configs/{key}",
             "delete": "DELETE /configs/{key}",
             "list": "GET /configs",
+            "cluster_status": "GET /cluster/status",
         },
     }
 
 
+@app.get("/cluster/status", response_model=ClusterStatusResponse)
+async def get_cluster_status(api_key_validated: None = Depends(validate_api_key)):
+    """Get cluster status and node information"""
+    if not CLUSTER_ENABLED or not cluster_manager:
+        return {
+            "enabled": False,
+            "mode": None,
+            "node_id": None,
+            "total_nodes": None,
+            "healthy_nodes": None
+        }
+
+    status = cluster_manager.get_cluster_status()
+    return {
+        "enabled": True,
+        "mode": status["cluster_mode"],
+        "node_id": status["node_id"],
+        "total_nodes": status["total_nodes"],
+        "healthy_nodes": status["healthy_nodes"]
+    }
+
+
+@app.get("/cluster/health")
+async def cluster_health():
+    """Health check endpoint for cluster nodes (no auth required for internal use)"""
+    return {"status": "healthy", "node_id": CLUSTER_NODE_ID}
+
+
+@app.get("/cluster/configs")
+async def cluster_list_configs(
+    category: Optional[str] = None,
+    manager: ConfigurationManager = Depends(get_config_manager)
+):
+    """Internal endpoint for cluster synchronization - lists all configs"""
+    try:
+        result = await asyncio.to_thread(manager.list_all, category=category)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e
+
+
 @app.post("/configs", response_model=ConfigResponse, status_code=201)
 async def create_configuration(
-    config: ConfigCreate, manager: ConfigurationManager = Depends(get_config_manager)
+    config: ConfigCreate,
+    x_user_key: str = Header(...),
+    manager: ConfigurationManager = Depends(get_config_manager)
 ):
-    """
-    Create a new encrypted configuration entry asynchronously.
-    Supports parallel requests without blocking.
-
-    Args:
-        config: Configuration data to create
-        manager: Injected ConfigurationManager instance
-
-    Returns:
-        ConfigResponse: Created configuration with decrypted value
-
-    Raises:
-        HTTPException 400: If key already exists
-        HTTPException 500: For internal server errors
-    """
+    """Create a new encrypted configuration entry"""
     try:
-        # Run blocking operation in thread pool for non-blocking execution
+        # Create locally
         result = await asyncio.to_thread(
             manager.create, key=config.key, value=config.value, category=config.category
         )
+
+        # Broadcast to cluster (REPLICA mode only)
+        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+            asyncio.create_task(
+                cluster_manager.broadcast_create(
+                    config.key, config.value, config.category, x_user_key
+                )
+            )
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -139,25 +251,26 @@ async def create_configuration(
 
 @app.get("/configs/{key}", response_model=ConfigResponse)
 async def read_configuration(
-    key: str, manager: ConfigurationManager = Depends(get_config_manager)
+    key: str,
+    x_user_key: str = Header(...),
+    manager: ConfigurationManager = Depends(get_config_manager)
 ):
-    """
-    Read and decrypt a configuration entry by key asynchronously.
-
-    Args:
-        key: Configuration key to retrieve
-        manager: Injected ConfigurationManager instance
-
-    Returns:
-        ConfigResponse: Configuration with decrypted value
-
-    Raises:
-        HTTPException 404: If key not found
-        HTTPException 500: For internal server errors
-    """
+    """Read and decrypt a configuration entry by key"""
     try:
-        result = await asyncio.to_thread(manager.read, key=key)
-        return result
+        # Try local first
+        try:
+            result = await asyncio.to_thread(manager.read, key=key)
+            return result
+        except ValueError:
+            # If not found locally and FEDERATED mode, query other nodes
+            if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
+                result = await cluster_manager.federated_read(key, x_user_key)
+                if result:
+                    return result
+
+            # Not found anywhere
+            raise ValueError("Configuration with key '" + key + "' not found")  # pylint: disable=raise-missing-from
+
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
@@ -168,27 +281,23 @@ async def read_configuration(
 async def update_configuration(
     key: str,
     config: ConfigUpdate,
-    manager: ConfigurationManager = Depends(get_config_manager),
+    x_user_key: str = Header(...),
+    manager: ConfigurationManager = Depends(get_config_manager)
 ):
-    """
-    Update an existing configuration entry with new encrypted value asynchronously.
-
-    Args:
-        key: Configuration key to update
-        config: New configuration data
-        manager: Injected ConfigurationManager instance
-
-    Returns:
-        ConfigResponse: Updated configuration with decrypted value
-
-    Raises:
-        HTTPException 404: If key not found
-        HTTPException 500: For internal server errors
-    """
+    """Update an existing configuration entry"""
     try:
         result = await asyncio.to_thread(
             manager.update, key=key, value=config.value, category=config.category
         )
+
+        # Broadcast to cluster (REPLICA mode only)
+        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+            asyncio.create_task(
+                cluster_manager.broadcast_update(
+                    key, config.value, config.category, x_user_key
+                )
+            )
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -198,24 +307,20 @@ async def update_configuration(
 
 @app.delete("/configs/{key}")
 async def delete_configuration(
-    key: str, manager: ConfigurationManager = Depends(get_config_manager)
+    key: str,
+    x_user_key: str = Header(...),
+    manager: ConfigurationManager = Depends(get_config_manager)
 ):
-    """
-    Delete a configuration entry permanently asynchronously.
-
-    Args:
-        key: Configuration key to delete
-        manager: Injected ConfigurationManager instance
-
-    Returns:
-        dict: Success message
-
-    Raises:
-        HTTPException 404: If key not found
-        HTTPException 500: For internal server errors
-    """
+    """Delete a configuration entry permanently"""
     try:
         await asyncio.to_thread(manager.delete, key=key)
+
+        # Broadcast to cluster (REPLICA mode only)
+        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+            asyncio.create_task(
+                cluster_manager.broadcast_delete(key, x_user_key)
+            )
+
         return {"message": f"Configuration '{key}' deleted successfully"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -226,41 +331,128 @@ async def delete_configuration(
 @app.get("/configs", response_model=list[ConfigResponse])
 async def list_configurations(
     category: Optional[str] = None,
-    manager: ConfigurationManager = Depends(get_config_manager),
+    x_user_key: str = Header(...),
+    manager: ConfigurationManager = Depends(get_config_manager)
 ):
-    """
-    List all configurations with optional category filter asynchronously.
-    All values are automatically decrypted.
-
-    Args:
-        category: Optional filter by category
-        manager: Injected ConfigurationManager instance
-
-    Returns:
-        list[ConfigResponse]: List of configurations with decrypted values
-
-    Raises:
-        HTTPException 500: For internal server errors
-    """
+    """List all configurations with optional category filter"""
     try:
+        # Get local configurations
         result = await asyncio.to_thread(manager.list_all, category=category)
+
+        # If FEDERATED mode, also get from other nodes
+        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
+            remote_configs = await cluster_manager.federated_list(category, x_user_key)
+
+            # Merge results (avoid duplicates)
+            local_keys = {c["key"] for c in result}
+            for remote_config in remote_configs:
+                if remote_config["key"] not in local_keys:
+                    result.append(remote_config)
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e
+# api_clustered.py - Nuovi endpoint
+
+@app.get("/cluster/salt")
+async def get_cluster_salt(api_key_validated: None = Depends(validate_api_key)):
+    """
+    Get the encryption salt file (for cluster synchronization).
+    
+    Returns the raw salt bytes to be used by other nodes.
+    """
+
+    if not os.path.exists(SALT_FILE_PATH):
+        raise HTTPException(
+            status_code=404,
+            detail="Salt file not found on this node"
+        )
+
+    try:
+        with open(SALT_FILE_PATH, 'rb') as f:
+            salt_data = f.read()
+
+        return Response(
+            content=salt_data,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": "attachment; filename=encryption.salt"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read salt file: {str(e)}"
+        ) from e
 
 
-# Application entry point with multithreading support
+@app.post("/cluster/salt")
+async def receive_cluster_salt(
+    request: Request,
+    api_key_validated: None = Depends(validate_api_key)
+):
+    """
+    Receive and save encryption salt from another cluster node.
+    
+    This endpoint is called during cluster bootstrap to synchronize
+    the encryption salt across all nodes.
+    """
 
+    # Check if we already have a salt file
+    if os.path.exists(SALT_FILE_PATH):
+        # Verify it matches the received one
+        existing_salt = open(SALT_FILE_PATH, 'rb').read()
+        received_salt = await request.body()
+
+        if existing_salt == received_salt:
+            return {"message": "Salt already present and matches", "status": "ok"}
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Salt file already exists and differs from received salt"
+            )
+
+    try:
+        # Save received salt
+        salt_data = await request.body()
+
+        # Validate salt size (should be 64 bytes)
+        if len(salt_data) != 64:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid salt size: {len(salt_data)} bytes (expected 64)"
+            )
+
+        # Create directory if needed
+        os.makedirs(os.path.dirname(SALT_FILE_PATH), exist_ok=True)
+
+        with open(SALT_FILE_PATH, 'wb') as f:
+            f.write(salt_data)
+
+        return {
+            "message": "Salt received and saved successfully",
+            "status": "created",
+            "size_bytes": len(salt_data)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save salt file: {str(e)}"
+        ) from e
+
+
+# Application entry point
 if __name__ == "__main__":
     import uvicorn
 
-    # Run server with multiple workers for parallel request handling
-    # Adjust workers count based on CPU cores (recommended: 2-4 x CPU cores)
     uvicorn.run(
         "api:app",
-        host="127.0.0.1",
-        port=9000,
-        workers=4,  # Number of worker processes
-        reload=False,  # Set to True only in development
+        host=HOST,
+        port=HOST_PORT,
+        workers=WORKERS,
+        reload=False,
         log_level="info",
     )

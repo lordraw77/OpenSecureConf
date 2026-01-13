@@ -15,14 +15,12 @@ import os
 import secrets
 import base64
 import json
-
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, Column, String, Text, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-
 
 Base = declarative_base()
 
@@ -39,7 +37,6 @@ class ConfigurationModel(Base):  # pylint: disable=too-few-public-methods
     """
 
     __tablename__ = "configurations"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(255), unique=True, nullable=False, index=True)
     encrypted_value = Column(Text, nullable=False)
@@ -157,13 +154,19 @@ class ConfigurationManager:
         Session (sessionmaker): SQLAlchemy session factory
     """
 
-    def __init__(self, db_path: str = "configurations.db", user_key: str = None):
+    def __init__(
+        self,
+        db_path: str = "configurations.db",
+        user_key: str = None,
+        salt_file: str = "encryption.salt",
+    ):
         """
         Initialize thread-safe configuration manager with database and encryption.
 
         Args:
             db_path (str): Path to SQLite database file (default: 'configurations.db')
             user_key (str): User-defined encryption key (required, min 8 chars recommended)
+            salt_file (str): Path to salt file (default: 'encryption.salt')
 
         Raises:
             ValueError: If user_key is not provided
@@ -171,7 +174,7 @@ class ConfigurationManager:
         if not user_key:
             raise ValueError("user_key is required for encryption")
 
-        self.encryption_manager = EncryptionManager(user_key)
+        self.encryption_manager = EncryptionManager(user_key, salt_file)
 
         # SQLite thread-safe configuration with connection pooling
         self.engine = create_engine(
@@ -185,12 +188,14 @@ class ConfigurationManager:
             pool_size=10,  # Connection pool size
             max_overflow=20,  # Extra connections when pool is full
         )
+
         Base.metadata.create_all(self.engine)
         self.session_factory = sessionmaker(bind=self.engine)
 
     def create(self, key: str, value: dict, category: str = None) -> dict:
         """
         Create a new encrypted configuration entry.
+
         Thread-safe operation with automatic session management.
 
         Args:
@@ -213,10 +218,10 @@ class ConfigurationManager:
 
             # Encrypt the value
             encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
-
             config = ConfigurationModel(
                 key=key, encrypted_value=encrypted_value, category=category
             )
+
             session.add(config)
             session.commit()
 
@@ -232,6 +237,7 @@ class ConfigurationManager:
     def read(self, key: str) -> dict:
         """
         Read and decrypt a configuration entry by key.
+
         Thread-safe operation with automatic session management.
 
         Args:
@@ -264,6 +270,7 @@ class ConfigurationManager:
     def update(self, key: str, value: dict, category: str = None) -> dict:
         """
         Update an existing configuration with new encrypted value.
+
         Thread-safe operation with automatic session management.
 
         Args:
@@ -302,6 +309,7 @@ class ConfigurationManager:
     def delete(self, key: str) -> bool:
         """
         Delete a configuration entry permanently.
+
         Thread-safe operation with automatic session management.
 
         Args:
@@ -328,6 +336,7 @@ class ConfigurationManager:
     def list_all(self, category: str = None) -> list:
         """
         List all configurations with optional category filter.
+
         All values are automatically decrypted.
         Thread-safe operation with automatic session management.
 
@@ -357,6 +366,7 @@ class ConfigurationManager:
                         "value": json.loads(decrypted_value),
                     }
                 )
+
             return result
         finally:
             session.close()
