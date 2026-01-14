@@ -32,20 +32,20 @@ from fastapi import FastAPI, HTTPException, Depends, Header, Request,Response
 
 
 # Load environment variables
-HOST_PORT = int(os.getenv("HOST_PORT", "9000"))
-WORKERS = int(os.getenv("WORKERS", "4"))
-DATABASE_PATH = os.getenv("DATABASE_PATH", "configurations.db")
-SALT_FILE_PATH = os.getenv("SALT_FILE_PATH", "encryption.salt")
-MIN_USER_KEY_LENGTH = int(os.getenv("MIN_USER_KEY_LENGTH", "8"))
-API_KEY_REQUIRED = os.getenv("API_KEY_REQUIRED", "false").lower() == "true"
-API_KEY = os.getenv("API_KEY", "your-super-secret-api-key-here")
-HOST=os.getenv("HOST", "127.0.0.1")
+OSC_HOST_PORT = int(os.getenv("OSC_HOST_PORT", "9000"))
+OSC_WORKERS = int(os.getenv("OSC_WORKERS", "4"))
+OSC_DATABASE_PATH = os.getenv("OSC_DATABASE_PATH", "configurations.db")
+OSC_SALT_FILE_PATH = os.getenv("OSC_SALT_FILE_PATH", "encryption.salt")
+OSC_MIN_USER_KEY_LENGTH = int(os.getenv("OSC_MIN_USER_KEY_LENGTH", "8"))
+OSC_API_KEY_REQUIRED = os.getenv("OSC_API_KEY_REQUIRED", "false").lower() == "true"
+OSC_API_KEY = os.getenv("OSC_API_KEY", "your-super-secret-api-key-here")
+OSC_HOST=os.getenv("OSC_HOST", "127.0.0.1")
 # Cluster configuration
-CLUSTER_ENABLED = os.getenv("CLUSTER_ENABLED", "false").lower() == "true"
-CLUSTER_MODE = os.getenv("CLUSTER_MODE", "replica")  # replica or federated
-CLUSTER_NODE_ID = os.getenv("CLUSTER_NODE_ID", f"node-{HOST_PORT}")
-CLUSTER_NODES = os.getenv("CLUSTER_NODES", "").split(",")  # host:port,host:port
-CLUSTER_SYNC_INTERVAL = int(os.getenv("CLUSTER_SYNC_INTERVAL", "30"))
+OSC_CLUSTER_ENABLED = os.getenv("OSC_CLUSTER_ENABLED", "false").lower() == "true"
+OSC_CLUSTER_MODE = os.getenv("OSC_CLUSTER_MODE", "replica")  # replica or federated
+OSC_CLUSTER_NODE_ID = os.getenv("OSC_CLUSTER_NODE_ID", f"node-{OSC_HOST_PORT}")
+OSC_CLUSTER_NODES = os.getenv("OSC_CLUSTER_NODES", "").split(",")  # host:port,host:port
+OSC_CLUSTER_SYNC_INTERVAL = int(os.getenv("OSC_CLUSTER_SYNC_INTERVAL", "30"))
 
 # Global cluster manager instance
 cluster_manager: Optional[ClusterManager] = None
@@ -57,22 +57,22 @@ async def lifespan(app: FastAPI):# pylint: disable=redefined-outer-name
     global cluster_manager #pylint: disable=global-statement
 
     # Startup
-    if CLUSTER_ENABLED:
+    if OSC_CLUSTER_ENABLED:
         cluster_manager = ClusterManager(
-            node_id=CLUSTER_NODE_ID,
-            cluster_mode=CLUSTER_MODE,
-            cluster_nodes=CLUSTER_NODES,
-            api_key=API_KEY if API_KEY_REQUIRED else None,
-            sync_interval=CLUSTER_SYNC_INTERVAL
+            node_id=OSC_CLUSTER_NODE_ID,
+            cluster_mode=OSC_CLUSTER_MODE,
+            cluster_nodes=OSC_CLUSTER_NODES,
+            api_key=OSC_API_KEY if OSC_API_KEY_REQUIRED else None,
+            sync_interval=OSC_CLUSTER_SYNC_INTERVAL
         )
         await cluster_manager.start()
-        print(f"✅ Cluster started in {CLUSTER_MODE.upper()} mode")
-        print(f"   Node ID: {CLUSTER_NODE_ID}")
+        print(f"✅ Cluster started in {OSC_CLUSTER_MODE.upper()} mode")
+        print(f"   Node ID: {OSC_CLUSTER_NODE_ID}")
         print(f"   Cluster nodes: {len(cluster_manager.nodes)}")
 
         # 🔐 Salt synchronization
         print("\n🔐 Synchronizing encryption salt...")
-        salt_synced = await cluster_manager.sync_encryption_salt(SALT_FILE_PATH)
+        salt_synced = await cluster_manager.sync_encryption_salt(OSC_SALT_FILE_PATH)
 
         if salt_synced:
             print("   ✅ Salt synchronized across cluster")
@@ -130,14 +130,14 @@ class ClusterStatusResponse(BaseModel):
 
 # Dependencies
 def validate_api_key(x_api_key: str = Header(None, alias="X-API-Key")):
-    """Validates API key if API_KEY_REQUIRED is enabled"""
-    if API_KEY_REQUIRED:
+    """Validates API key if OSC_API_KEY_REQUIRED is enabled"""
+    if OSC_API_KEY_REQUIRED:
         if not x_api_key:
             raise HTTPException(
                 status_code=403,
                 detail="API key required but missing. Provide X-API-Key header.",
             )
-        if x_api_key != API_KEY:
+        if x_api_key != OSC_API_KEY:
             raise HTTPException(status_code=403, detail="Invalid API key")
 
 
@@ -146,15 +146,15 @@ def get_config_manager(
     api_key_validated: None = Depends(validate_api_key),
 ):
     """Returns ConfigurationManager instance with validated user key"""
-    if not x_user_key or len(x_user_key) < MIN_USER_KEY_LENGTH:
+    if not x_user_key or len(x_user_key) < OSC_MIN_USER_KEY_LENGTH:
         raise HTTPException(
             status_code=401,
             detail=
-            f"x-user-key header missing or too short (minimum {MIN_USER_KEY_LENGTH} characters)",
+            f"x-user-key header missing or too short (minimum {OSC_MIN_USER_KEY_LENGTH} characters)",
         )
 
     return ConfigurationManager(
-        db_path=DATABASE_PATH, user_key=x_user_key, salt_file=SALT_FILE_PATH
+        db_path=OSC_DATABASE_PATH, user_key=x_user_key, salt_file=OSC_SALT_FILE_PATH
     )
 
 
@@ -166,9 +166,9 @@ async def root(api_key_validated: None = Depends(validate_api_key)):
         "service": "OpenSecureConf API",
         "version": "2.0.0",
         "features": ["encryption", "multithreading", "async", "api-key-auth", "clustering"],
-        "api_key_required": API_KEY_REQUIRED,
-        "cluster_enabled": CLUSTER_ENABLED,
-        "cluster_mode": CLUSTER_MODE if CLUSTER_ENABLED else None,
+        "api_key_required": OSC_API_KEY_REQUIRED,
+        "cluster_enabled": OSC_CLUSTER_ENABLED,
+        "cluster_mode": OSC_CLUSTER_MODE if OSC_CLUSTER_ENABLED else None,
         "endpoints": {
             "create": "POST /configs",
             "read": "GET /configs/{key}",
@@ -183,7 +183,7 @@ async def root(api_key_validated: None = Depends(validate_api_key)):
 @app.get("/cluster/status", response_model=ClusterStatusResponse)
 async def get_cluster_status(api_key_validated: None = Depends(validate_api_key)):
     """Get cluster status and node information"""
-    if not CLUSTER_ENABLED or not cluster_manager:
+    if not OSC_CLUSTER_ENABLED or not cluster_manager:
         return {
             "enabled": False,
             "mode": None,
@@ -205,7 +205,7 @@ async def get_cluster_status(api_key_validated: None = Depends(validate_api_key)
 @app.get("/cluster/health")
 async def cluster_health():
     """Health check endpoint for cluster nodes (no auth required for internal use)"""
-    return {"status": "healthy", "node_id": CLUSTER_NODE_ID}
+    return {"status": "healthy", "node_id": OSC_CLUSTER_NODE_ID}
 
 
 @app.get("/cluster/configs")
@@ -235,7 +235,7 @@ async def create_configuration(
         )
 
         # Broadcast to cluster (REPLICA mode only)
-        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+        if OSC_CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
             asyncio.create_task(
                 cluster_manager.broadcast_create(
                     config.key, config.value, config.category, x_user_key
@@ -263,7 +263,7 @@ async def read_configuration(
             return result
         except ValueError:
             # If not found locally and FEDERATED mode, query other nodes
-            if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
+            if OSC_CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
                 result = await cluster_manager.federated_read(key, x_user_key)
                 if result:
                     return result
@@ -291,7 +291,7 @@ async def update_configuration(
         )
 
         # Broadcast to cluster (REPLICA mode only)
-        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+        if OSC_CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
             asyncio.create_task(
                 cluster_manager.broadcast_update(
                     key, config.value, config.category, x_user_key
@@ -316,7 +316,7 @@ async def delete_configuration(
         await asyncio.to_thread(manager.delete, key=key)
 
         # Broadcast to cluster (REPLICA mode only)
-        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
+        if OSC_CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.REPLICA:
             asyncio.create_task(
                 cluster_manager.broadcast_delete(key, x_user_key)
             )
@@ -340,7 +340,7 @@ async def list_configurations(
         result = await asyncio.to_thread(manager.list_all, category=category)
 
         # If FEDERATED mode, also get from other nodes
-        if CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
+        if OSC_CLUSTER_ENABLED and cluster_manager and cluster_manager.cluster_mode == ClusterMode.FEDERATED:
             remote_configs = await cluster_manager.federated_list(category, x_user_key)
 
             # Merge results (avoid duplicates)
@@ -362,14 +362,14 @@ async def get_cluster_salt(api_key_validated: None = Depends(validate_api_key)):
     Returns the raw salt bytes to be used by other nodes.
     """
 
-    if not os.path.exists(SALT_FILE_PATH):
+    if not os.path.exists(OSC_SALT_FILE_PATH):
         raise HTTPException(
             status_code=404,
             detail="Salt file not found on this node"
         )
 
     try:
-        with open(SALT_FILE_PATH, 'rb') as f:
+        with open(OSC_SALT_FILE_PATH, 'rb') as f:
             salt_data = f.read()
 
         return Response(
@@ -399,9 +399,9 @@ async def receive_cluster_salt(
     """
 
     # Check if we already have a salt file
-    if os.path.exists(SALT_FILE_PATH):
+    if os.path.exists(OSC_SALT_FILE_PATH):
         # Verify it matches the received one
-        existing_salt = open(SALT_FILE_PATH, 'rb').read()
+        existing_salt = open(OSC_SALT_FILE_PATH, 'rb').read()
         received_salt = await request.body()
 
         if existing_salt == received_salt:
@@ -424,9 +424,9 @@ async def receive_cluster_salt(
             )
 
         # Create directory if needed
-        os.makedirs(os.path.dirname(SALT_FILE_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(OSC_SALT_FILE_PATH), exist_ok=True)
 
-        with open(SALT_FILE_PATH, 'wb') as f:
+        with open(OSC_SALT_FILE_PATH, 'wb') as f:
             f.write(salt_data)
 
         return {
@@ -450,9 +450,9 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "api:app",
-        host=HOST,
-        port=HOST_PORT,
-        workers=WORKERS,
+        host=OSC_HOST,
+        port=OSC_HOST_PORT,
+        workers=OSC_WORKERS,
         reload=False,
         log_level="info",
     )

@@ -11,11 +11,11 @@ services:
     ports:
       - "9000:9000"
     environment:
-      - HOST=0.0.0.0
+      - OSC_HOST=0.0.0.0
       - PORT=9000
-      - WORKERS=4
-      - DATABASE_PATH=/app/data/configurations.db
-      - SALT_FILE_PATH=/app/data/encryption.salt
+      - OSC_WORKERS=4
+      - OSC_DATABASE_PATH=/app/data/configurations.db
+      - OSC_SALT_FILE_PATH=/app/data/encryption.salt
     volumes:
       - opensecureconf-data:/app/data
     networks:

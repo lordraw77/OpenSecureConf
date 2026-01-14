@@ -52,46 +52,46 @@ Create a `.env` file or set environment variables:
 
 ```bash
 # Server Settings
-HOST_PORT=9000
-WORKERS=4
+OSC_HOST_PORT=9000
+OSC_WORKERS=4
 
 # Database Configuration
-DATABASE_PATH=/app/data/configurations.db
+OSC_DATABASE_PATH=/app/data/configurations.db
 
 # Encryption Configuration
-SALT_FILE_PATH=/app/data/encryption.salt
+OSC_SALT_FILE_PATH=/app/data/encryption.salt
 
 # Security Settings
-MIN_USER_KEY_LENGTH=8
+OSC_MIN_USER_KEY_LENGTH=8
 
 # API Key Authentication (optional but recommended for cluster)
-API_KEY_REQUIRED=true
-API_KEY=your-super-secret-api-key-here
+OSC_API_KEY_REQUIRED=true
+OSC_API_KEY=your-super-secret-api-key-here
 
 # Cluster Configuration
-CLUSTER_ENABLED=true
-CLUSTER_MODE=replica  # or federated
-CLUSTER_NODE_ID=node1:9000
-CLUSTER_NODES=node2:9000,node3:9000
-CLUSTER_SYNC_INTERVAL=30
+OSC_CLUSTER_ENABLED=true
+OSC_CLUSTER_MODE=replica  # or federated
+OSC_CLUSTER_NODE_ID=node1:9000
+OSC_CLUSTER_NODES=node2:9000,node3:9000
+OSC_CLUSTER_SYNC_INTERVAL=30
 ```
 
 ### Environment Variables
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `HOST_PORT` | Server port | `9000` | No |
-| `WORKERS` | Number of worker processes | `4` | No |
-| `DATABASE_PATH` | SQLite database file path | `configurations.db` | No |
-| `SALT_FILE_PATH` | Encryption salt file path | `encryption.salt` | No |
-| `MIN_USER_KEY_LENGTH` | Minimum length for user encryption key | `8` | No |
-| `API_KEY_REQUIRED` | Enable API key authentication (`true`/`false`) | `false` | No |
-| `API_KEY` | API key for authentication | `your-super-secret-api-key-here` | If enabled |
-| `CLUSTER_ENABLED` | Enable clustering (`true`/`false`) | `false` | No |
-| `CLUSTER_MODE` | Cluster mode: `replica` or `federated` | `replica` | If clustering |
-| `CLUSTER_NODE_ID` | Unique node identifier (host:port) | `node-{PORT}` | If clustering |
-| `CLUSTER_NODES` | Comma-separated list of other nodes | `""` | If clustering |
-| `CLUSTER_SYNC_INTERVAL` | Sync interval in seconds (REPLICA only) | `30` | No |
+| `OSC_HOST_PORT` | Server port | `9000` | No |
+| `OSC_WORKERS` | Number of worker processes | `4` | No |
+| `OSC_DATABASE_PATH` | SQLite database file path | `configurations.db` | No |
+| `OSC_SALT_FILE_PATH` | Encryption salt file path | `encryption.salt` | No |
+| `OSC_MIN_USER_KEY_LENGTH` | Minimum length for user encryption key | `8` | No |
+| `OSC_API_KEY_REQUIRED` | Enable API key authentication (`true`/`false`) | `false` | No |
+| `OSC_API_KEY` | API key for authentication | `your-super-secret-api-key-here` | If enabled |
+| `OSC_CLUSTER_ENABLED` | Enable clustering (`true`/`false`) | `false` | No |
+| `OSC_CLUSTER_MODE` | Cluster mode: `replica` or `federated` | `replica` | If clustering |
+| `OSC_CLUSTER_NODE_ID` | Unique node identifier (host:port) | `node-{PORT}` | If clustering |
+| `OSC_CLUSTER_NODES` | Comma-separated list of other nodes | `""` | If clustering |
+| `OSC_CLUSTER_SYNC_INTERVAL` | Sync interval in seconds (REPLICA only) | `30` | No |
 
 ## 🌐 Cluster Modes
 
@@ -112,8 +112,8 @@ CLUSTER_SYNC_INTERVAL=30
 
 **Configuration:**
 ```bash
-CLUSTER_MODE=replica
-CLUSTER_SYNC_INTERVAL=30  # Sync every 30 seconds
+OSC_CLUSTER_MODE=replica
+OSC_CLUSTER_SYNC_INTERVAL=30  # Sync every 30 seconds
 ```
 
 ### FEDERATED Mode (Distributed Storage)
@@ -134,7 +134,7 @@ CLUSTER_SYNC_INTERVAL=30  # Sync every 30 seconds
 
 **Configuration:**
 ```bash
-CLUSTER_MODE=federated
+OSC_CLUSTER_MODE=federated
 # No sync interval needed
 ```
 
@@ -144,7 +144,7 @@ CLUSTER_MODE=federated
 
 ```bash
 # Disable clustering for single node
-export CLUSTER_ENABLED=false
+export OSC_CLUSTER_ENABLED=false
 python api.py
 ```
 
@@ -152,34 +152,34 @@ python api.py
 
 **Terminal 1 - Node 1:**
 ```bash
-export CLUSTER_ENABLED=true
-export CLUSTER_MODE=replica
-export CLUSTER_NODE_ID=localhost:9001
-export CLUSTER_NODES=localhost:9002,localhost:9003
-export HOST_PORT=9001
-export API_KEY=cluster-secret-123
+export OSC_CLUSTER_ENABLED=true
+export OSC_CLUSTER_MODE=replica
+export OSC_CLUSTER_NODE_ID=localhost:9001
+export OSC_CLUSTER_NODES=localhost:9002,localhost:9003
+export OSC_HOST_PORT=9001
+export OSC_API_KEY=cluster-secret-123
 python api.py
 ```
 
 **Terminal 2 - Node 2:**
 ```bash
-export CLUSTER_ENABLED=true
-export CLUSTER_MODE=replica
-export CLUSTER_NODE_ID=localhost:9002
-export CLUSTER_NODES=localhost:9001,localhost:9003
-export HOST_PORT=9002
-export API_KEY=cluster-secret-123
+export OSC_CLUSTER_ENABLED=true
+export OSC_CLUSTER_MODE=replica
+export OSC_CLUSTER_NODE_ID=localhost:9002
+export OSC_CLUSTER_NODES=localhost:9001,localhost:9003
+export OSC_HOST_PORT=9002
+export OSC_API_KEY=cluster-secret-123
 python api.py
 ```
 
 **Terminal 3 - Node 3:**
 ```bash
-export CLUSTER_ENABLED=true
-export CLUSTER_MODE=replica
-export CLUSTER_NODE_ID=localhost:9003
-export CLUSTER_NODES=localhost:9001,localhost:9002
-export HOST_PORT=9003
-export API_KEY=cluster-secret-123
+export OSC_CLUSTER_ENABLED=true
+export OSC_CLUSTER_MODE=replica
+export OSC_CLUSTER_NODE_ID=localhost:9003
+export OSC_CLUSTER_NODES=localhost:9001,localhost:9002
+export OSC_HOST_PORT=9003
+export OSC_API_KEY=cluster-secret-123
 python api.py
 ```
 
@@ -195,18 +195,18 @@ services:
     ports:
       - "9001:9000"
     environment:
-      - HOST_PORT=9000
-      - WORKERS=2
-      - DATABASE_PATH=/app/data/configurations.db
-      - SALT_FILE_PATH=/app/data/encryption.salt
-      - MIN_USER_KEY_LENGTH=8
-      - API_KEY_REQUIRED=true
-      - API_KEY=cluster-secret-key-123
-      - CLUSTER_ENABLED=true
-      - CLUSTER_MODE=replica
-      - CLUSTER_NODE_ID=node1:9000
-      - CLUSTER_NODES=node2:9000,node3:9000
-      - CLUSTER_SYNC_INTERVAL=30
+      - OSC_HOST_PORT=9000
+      - OSC_WORKERS=2
+      - OSC_DATABASE_PATH=/app/data/configurations.db
+      - OSC_SALT_FILE_PATH=/app/data/encryption.salt
+      - OSC_MIN_USER_KEY_LENGTH=8
+      - OSC_API_KEY_REQUIRED=true
+      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_CLUSTER_ENABLED=true
+      - OSC_CLUSTER_MODE=replica
+      - OSC_CLUSTER_NODE_ID=node1:9000
+      - OSC_CLUSTER_NODES=node2:9000,node3:9000
+      - OSC_CLUSTER_SYNC_INTERVAL=30
     volumes:
       - ./data/node1:/app/data
     networks:
@@ -218,18 +218,18 @@ services:
     ports:
       - "9002:9000"
     environment:
-      - HOST_PORT=9000
-      - WORKERS=2
-      - DATABASE_PATH=/app/data/configurations.db
-      - SALT_FILE_PATH=/app/data/encryption.salt
-      - MIN_USER_KEY_LENGTH=8
-      - API_KEY_REQUIRED=true
-      - API_KEY=cluster-secret-key-123
-      - CLUSTER_ENABLED=true
-      - CLUSTER_MODE=replica
-      - CLUSTER_NODE_ID=node2:9000
-      - CLUSTER_NODES=node1:9000,node3:9000
-      - CLUSTER_SYNC_INTERVAL=30
+      - OSC_HOST_PORT=9000
+      - OSC_WORKERS=2
+      - OSC_DATABASE_PATH=/app/data/configurations.db
+      - OSC_SALT_FILE_PATH=/app/data/encryption.salt
+      - OSC_MIN_USER_KEY_LENGTH=8
+      - OSC_API_KEY_REQUIRED=true
+      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_CLUSTER_ENABLED=true
+      - OSC_CLUSTER_MODE=replica
+      - OSC_CLUSTER_NODE_ID=node2:9000
+      - OSC_CLUSTER_NODES=node1:9000,node3:9000
+      - OSC_CLUSTER_SYNC_INTERVAL=30
     volumes:
       - ./data/node2:/app/data
     networks:
@@ -241,18 +241,18 @@ services:
     ports:
       - "9003:9000"
     environment:
-      - HOST_PORT=9000
-      - WORKERS=2
-      - DATABASE_PATH=/app/data/configurations.db
-      - SALT_FILE_PATH=/app/data/encryption.salt
-      - MIN_USER_KEY_LENGTH=8
-      - API_KEY_REQUIRED=true
-      - API_KEY=cluster-secret-key-123
-      - CLUSTER_ENABLED=true
-      - CLUSTER_MODE=replica
-      - CLUSTER_NODE_ID=node3:9000
-      - CLUSTER_NODES=node1:9000,node2:9000
-      - CLUSTER_SYNC_INTERVAL=30
+      - OSC_HOST_PORT=9000
+      - OSC_WORKERS=2
+      - OSC_DATABASE_PATH=/app/data/configurations.db
+      - OSC_SALT_FILE_PATH=/app/data/encryption.salt
+      - OSC_MIN_USER_KEY_LENGTH=8
+      - OSC_API_KEY_REQUIRED=true
+      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_CLUSTER_ENABLED=true
+      - OSC_CLUSTER_MODE=replica
+      - OSC_CLUSTER_NODE_ID=node3:9000
+      - OSC_CLUSTER_NODES=node1:9000,node2:9000
+      - OSC_CLUSTER_SYNC_INTERVAL=30
     volumes:
       - ./data/node3:/app/data
     networks:
@@ -275,7 +275,7 @@ curl -H "X-API-Key: cluster-secret-key-123" http://localhost:9003/cluster/status
 
 ### Docker Compose - FEDERATED Cluster
 
-Change `CLUSTER_MODE=federated` in the docker-compose file above.
+Change `OSC_CLUSTER_MODE=federated` in the docker-compose file above.
 
 Server runs on configured ports (9001, 9002, 9003)  
 Interactive docs at `http://localhost:9001/docs` (for node1)
@@ -436,11 +436,11 @@ curl -X GET "http://localhost:9001/" \
 
 ### Best Practices
 ✅ Use strong user keys (minimum 12+ characters, mixed case, numbers, symbols)  
-✅ Set `MIN_USER_KEY_LENGTH` to at least 12 in production  
-✅ **Always enable API key authentication in cluster mode** (`API_KEY_REQUIRED=true`)  
+✅ Set `OSC_MIN_USER_KEY_LENGTH` to at least 12 in production  
+✅ **Always enable API key authentication in cluster mode** (`OSC_API_KEY_REQUIRED=true`)  
 ✅ Use strong, random API keys (generate with `openssl rand -hex 32`)  
 ✅ Use the **same API key on all cluster nodes**  
-✅ Store `DATABASE_PATH` and `SALT_FILE_PATH` in persistent volumes  
+✅ Store `OSC_DATABASE_PATH` and `OSC_SALT_FILE_PATH` in persistent volumes  
 ✅ Use private network (VPC/VLAN) for cluster communication  
 ✅ Use HTTPS/TLS in production environments  
 ✅ Configure firewall to allow only cluster nodes on cluster ports  
@@ -505,10 +505,10 @@ docker exec node2 sha256sum /app/data/encryption.salt
 
 ```bash
 # For 4-core CPU per node
-export WORKERS=8  # 2x cores
+export OSC_WORKERS=8  # 2x cores
 
 # For 8-core CPU per node
-export WORKERS=16  # 2x cores
+export OSC_WORKERS=16  # 2x cores
 ```
 
 ### Expected Performance per Node
@@ -564,9 +564,9 @@ COPY *.py .
 RUN mkdir -p /app/data
 
 # Environment defaults
-ENV HOST_PORT=9000
-ENV WORKERS=4
-ENV CLUSTER_ENABLED=false
+ENV OSC_HOST_PORT=9000
+ENV OSC_WORKERS=4
+ENV OSC_CLUSTER_ENABLED=false
 
 EXPOSE 9000
 
@@ -599,9 +599,9 @@ CMD ["python", "api.py"]
 ### Single Node Testing
 
 ```bash
-export CLUSTER_ENABLED=false
-export API_KEY_REQUIRED=false
-export HOST_PORT=9000
+export OSC_CLUSTER_ENABLED=false
+export OSC_API_KEY_REQUIRED=false
+export OSC_HOST_PORT=9000
 python api.py
 
 # In another terminal
@@ -673,15 +673,15 @@ kind: ConfigMap
 metadata:
   name: opensecureconf-config
 data:
-  HOST_PORT: "9000"
-  WORKERS: "4"
-  DATABASE_PATH: "/app/data/configurations.db"
-  SALT_FILE_PATH: "/app/data/encryption.salt"
-  MIN_USER_KEY_LENGTH: "12"
-  API_KEY_REQUIRED: "true"
-  CLUSTER_ENABLED: "true"
-  CLUSTER_MODE: "replica"
-  CLUSTER_SYNC_INTERVAL: "30"
+  OSC_HOST_PORT: "9000"
+  OSC_WORKERS: "4"
+  OSC_DATABASE_PATH: "/app/data/configurations.db"
+  OSC_SALT_FILE_PATH: "/app/data/encryption.salt"
+  OSC_MIN_USER_KEY_LENGTH: "12"
+  OSC_API_KEY_REQUIRED: "true"
+  OSC_CLUSTER_ENABLED: "true"
+  OSC_CLUSTER_MODE: "replica"
+  OSC_CLUSTER_SYNC_INTERVAL: "30"
 ---
 apiVersion: v1
 kind: Secret
@@ -689,7 +689,7 @@ metadata:
   name: opensecureconf-secret
 type: Opaque
 stringData:
-  API_KEY: your-production-api-key-here
+  OSC_API_KEY: your-production-api-key-here
 ---
 apiVersion: v1
 kind: Service
@@ -727,16 +727,16 @@ spec:
         - configMapRef:
             name: opensecureconf-config
         env:
-        - name: API_KEY
+        - name: OSC_API_KEY
           valueFrom:
             secretKeyRef:
               name: opensecureconf-secret
-              key: API_KEY
-        - name: CLUSTER_NODE_ID
+              key: OSC_API_KEY
+        - name: OSC_CLUSTER_NODE_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: CLUSTER_NODES
+        - name: OSC_CLUSTER_NODES
           value: "opensecureconf-0.opensecureconf:9000,opensecureconf-1.opensecureconf:9000,opensecureconf-2.opensecureconf:9000"
         volumeMounts:
         - name: data

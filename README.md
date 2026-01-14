@@ -232,7 +232,7 @@ cd server
 pip install -r requirements.txt
 
 # Run single node
-export CLUSTER_ENABLED=false
+export OSC_CLUSTER_ENABLED=false
 python api.py
 ```
 
@@ -242,19 +242,19 @@ python api.py
 
 ```bash
 # Server Settings
-export HOST_PORT=9000
-export WORKERS=4
+export OSC_HOST_PORT=9000
+export OSC_WORKERS=4
 
 # Security
-export API_KEY_REQUIRED=true
-export API_KEY=cluster-secret-key-123
+export OSC_API_KEY_REQUIRED=true
+export OSC_API_KEY=cluster-secret-key-123
 
 # Cluster Configuration
-export CLUSTER_ENABLED=true
-export CLUSTER_MODE=replica  # or federated
-export CLUSTER_NODE_ID=node1:9000
-export CLUSTER_NODES=node2:9000,node3:9000
-export CLUSTER_SYNC_INTERVAL=30  # seconds (REPLICA only)
+export OSC_CLUSTER_ENABLED=true
+export OSC_CLUSTER_MODE=replica  # or federated
+export OSC_CLUSTER_NODE_ID=node1:9000
+export OSC_CLUSTER_NODES=node2:9000,node3:9000
+export OSC_CLUSTER_SYNC_INTERVAL=30  # seconds (REPLICA only)
 ```
 
 #### Docker Compose (Recommended)
@@ -325,7 +325,7 @@ from opensecureconf_client import OpenSecureConfClient
 client = OpenSecureConfClient(
     base_url="http://localhost:9001",  # Primary node
     user_key="your-encryption-key",
-    api_key="cluster-secret-key-123"   # Required if API_KEY_REQUIRED=true
+    api_key="cluster-secret-key-123"   # Required if OSC_API_KEY_REQUIRED=true
 )
 
 # CREATE (in REPLICA mode, automatically replicated to all nodes)
@@ -444,7 +444,7 @@ curl -X GET "http://localhost:9000/configs/mykey" \
 ### Best Practices
 
 ✅ **Use strong user keys**: Minimum 12 characters, mixed case, numbers, symbols  
-✅ **Always enable API key in cluster mode**: `API_KEY_REQUIRED=true`  
+✅ **Always enable API key in cluster mode**: `OSC_API_KEY_REQUIRED=true`  
 ✅ **Use strong API keys**: Generate with `openssl rand -hex 32`  
 ✅ **Same API key on all nodes**: Required for inter-node communication  
 ✅ **Secure salt file**: Keep `server/encryption.salt` backed up  
@@ -656,7 +656,7 @@ curl -X GET "http://localhost:9001/configs?category=prod" \
 **Worker Configuration:**
 ```bash
 # Recommended: 2-4x CPU cores per node
-export WORKERS=8  # For 4-core CPU
+export OSC_WORKERS=8  # For 4-core CPU
 ```
 
 **Cluster Sizing:**
@@ -697,8 +697,8 @@ FEDERATED Mode:
 
 ```bash
 cd server
-export CLUSTER_ENABLED=false
-export API_KEY_REQUIRED=false
+export OSC_CLUSTER_ENABLED=false
+export OSC_API_KEY_REQUIRED=false
 python api.py
 
 # In another terminal
@@ -780,12 +780,12 @@ services:
     ports:
       - "9001:9000"
     environment:
-      - CLUSTER_ENABLED=true
-      - CLUSTER_MODE=replica
-      - CLUSTER_NODE_ID=node1:9000
-      - CLUSTER_NODES=node2:9000,node3:9000
-      - API_KEY_REQUIRED=true
-      - API_KEY=${API_KEY}
+      - OSC_CLUSTER_ENABLED=true
+      - OSC_CLUSTER_MODE=replica
+      - OSC_CLUSTER_NODE_ID=node1:9000
+      - OSC_CLUSTER_NODES=node2:9000,node3:9000
+      - OSC_API_KEY_REQUIRED=true
+      - OSC_API_KEY=${OSC_API_KEY}
     volumes:
       - ./data/node1:/app/data
     networks:
@@ -822,21 +822,21 @@ spec:
         ports:
         - containerPort: 9000
         env:
-        - name: CLUSTER_ENABLED
+        - name: OSC_CLUSTER_ENABLED
           value: "true"
-        - name: CLUSTER_MODE
+        - name: OSC_CLUSTER_MODE
           value: "replica"
-        - name: CLUSTER_NODE_ID
+        - name: OSC_CLUSTER_NODE_ID
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: CLUSTER_NODES
+        - name: OSC_CLUSTER_NODES
           value: "opensecureconf-0:9000,opensecureconf-1:9000,opensecureconf-2:9000"
-        - name: API_KEY
+        - name: OSC_API_KEY
           valueFrom:
             secretKeyRef:
               name: opensecureconf-secret
-              key: API_KEY
+              key: OSC_API_KEY
         volumeMounts:
         - name: data
           mountPath: /app/data

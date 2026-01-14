@@ -8,24 +8,24 @@ services:
     container_name: opensecureconf-server
     restart: unless-stopped
     ports:
-      - "${HOST_PORT:-9000}:9000"
+      - "${OSC_HOST_PORT:-9000}:9000"
     environment:
       # Server Configuration
-      - HOST=0.0.0.0
+      - OSC_HOST=0.0.0.0
       - PORT=9000
-      - WORKERS=${WORKERS:-4}
+      - OSC_WORKERS=${OSC_WORKERS:-4}
 
       # Database Configuration
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/configurations.db}
+      - OSC_DATABASE_PATH=${OSC_DATABASE_PATH:-/app/data/configurations.db}
 
       # Encryption Configuration
-      - SALT_FILE_PATH=${SALT_FILE_PATH:-/app/data/encryption.salt}
+      - OSC_SALT_FILE_PATH=${OSC_SALT_FILE_PATH:-/app/data/encryption.salt}
 
       # Security Settings
-      - MIN_USER_KEY_LENGTH=${MIN_USER_KEY_LENGTH:-8}
+      - OSC_MIN_USER_KEY_LENGTH=${OSC_MIN_USER_KEY_LENGTH:-8}
 
       # Optional: API Key requirement (if you want to add extra security)
-      # - API_KEY_REQUIRED=${API_KEY_REQUIRED:-false}
+      # - OSC_API_KEY_REQUIRED=${OSC_API_KEY_REQUIRED:-false}
 
     volumes:
       # Persist database and encryption salt

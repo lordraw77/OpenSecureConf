@@ -484,6 +484,7 @@ class ClusterManager:
             return None
 
         healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
+        failed_nodes = []
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             for node in healthy_nodes:
@@ -500,10 +501,17 @@ class ClusterManager:
                     if response.status_code == 200:
                         return response.json()
 
-                except Exception:
-                    continue
+                except Exception as exc:
+                    failed_nodes.append((node.base_url, str(exc)))
+
+        # Log solo se tutti i nodi falliscono
+        if failed_nodes:
+            print(
+                f"All nodes failed for key '{key}': {failed_nodes}"
+            )
 
         return None
+
 
     async def federated_list(self, category: Optional[str], user_key: str) -> List[Dict]:
         """
@@ -640,7 +648,7 @@ class ClusterManager:
                             print(f"   ✅ Salt received from {node.node_id}")
                             return True
 
-                    except Exception:
+                    except Exception:  # nosec B112
                         continue
 
             # No node has salt - bootstrap logic
