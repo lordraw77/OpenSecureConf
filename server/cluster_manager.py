@@ -9,9 +9,8 @@
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-positional-arguments
 
-
 """
-OpenSecureConf - Cluster Manager Module
+OpenSecureConf - Cluster Manager Module with Metrics Support
 
 This module provides cluster management for distributed, encrypted configuration
 storage. It supports two clustering modes:
@@ -33,11 +32,12 @@ Features:
 - Distributed read and list operations in FEDERATED mode.
 - Optional API key authentication for inter-node communication.
 - Asynchronous implementation using asyncio and httpx.
+- Metrics tracking for synchronization and cluster operations.
 """
-
 
 import asyncio
 import os
+import time
 from typing import List, Dict, Optional, Set
 from enum import Enum
 from dataclasses import dataclass
@@ -45,22 +45,21 @@ from datetime import datetime
 import secrets
 import httpx
 from async_logger import get_logger
+from prometheus_client import Histogram
 
 logger = get_logger(__name__)
 
 
 class ClusterMode(str, Enum):
-
     """Cluster operation modes.
 
     Attributes:
         REPLICA: All nodes synchronize and store all configuration keys
-                 (active-active replication).
+                (active-active replication).
         FEDERATED: Each node stores only its own keys, and queries can be
-                   distributed across the cluster to locate missing keys.
+                  distributed across the cluster to locate missing keys.
     """
-
-    REPLICA = "replica"      # All nodes sync all keys
+    REPLICA = "replica"  # All nodes sync all keys
     FEDERATED = "federated"  # Distributed storage with cross-node queries
 
 
@@ -116,8 +115,8 @@ class ClusterManager:
 
     The manager uses asynchronous HTTP requests, periodic health checks,
     and optional API-key–based authentication for inter-node calls.
+    Includes metrics tracking for Prometheus monitoring.
     """
-
 
     def __init__(
         self,
@@ -126,7 +125,8 @@ class ClusterManager:
         cluster_nodes: List[str],
         api_key: Optional[str] = None,
         sync_interval: int = 30,
-        health_check_interval: int = 10
+        health_check_interval: int = 10,
+        metrics_registry=None
     ):
         """
         Initialize the cluster manager.
@@ -148,13 +148,27 @@ class ClusterManager:
                 mode. Ignored in FEDERATED mode.
             health_check_interval:
                 Interval in seconds between health checks for all known nodes.
+            metrics_registry:
+                Optional Prometheus registry for metrics collection.
         """
-
         self.node_id = node_id
         self.cluster_mode = ClusterMode(cluster_mode)
         self.api_key = api_key
         self.sync_interval = sync_interval
         self.health_check_interval = health_check_interval
+
+        # Metrics (optional)
+        self.metrics_registry = metrics_registry
+        self.cluster_sync_duration_histogram = None
+        if metrics_registry:
+            try:
+                self.cluster_sync_duration_histogram = Histogram(
+                    'osc_cluster_sync_duration_seconds',
+                    'Cluster synchronization duration in seconds',
+                    registry=metrics_registry
+                )
+            except ImportError:
+                pass
 
         # Parse cluster nodes
         self.nodes: Dict[str, NodeInfo] = {}
@@ -182,7 +196,6 @@ class ClusterManager:
         """Start background cluster management tasks.
 
         This method:
-
         - Starts a periodic health check loop for all known nodes.
         - If the cluster mode is REPLICA, also starts a periodic synchronization
           loop that pulls configurations from healthy peers.
@@ -205,11 +218,9 @@ class ClusterManager:
 
         Cancels and awaits all running background asyncio tasks created by
         the cluster manager (health checks and, in REPLICA mode, sync loop).
-
         This should be called during application shutdown to ensure a clean
         termination of background tasks.
         """
-
         for task in self._background_tasks:
             task.cancel()
         await asyncio.gather(*self._background_tasks, return_exceptions=True)
@@ -227,7 +238,7 @@ class ClusterManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.info("Health check error: {e}")
+                logger.info("health_check_error", error=str(e))
 
     async def _sync_loop(self):
         """Run the periodic synchronization loop (REPLICA mode only).
@@ -244,14 +255,13 @@ class ClusterManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.info("Sync error: {e}")
+                logger.info("sync_loop_error", error=str(e))
 
     async def _check_nodes_health(self):
         """Check the health status of all known nodes.
 
         For each node, sends a GET request to ``/cluster/health`` and updates
         its ``is_healthy`` and ``last_seen`` fields based on the response.
-
         Nodes that fail to respond or return a non-200 status code are marked
         as unhealthy.
         """
@@ -279,12 +289,12 @@ class ClusterManager:
         """Synchronize configurations from all healthy nodes (REPLICA mode).
 
         This method:
-
         - Prevents concurrent sync executions using the ``sync_in_progress`` flag.
         - Iterates over all healthy nodes and calls their ``/cluster/configs``
           endpoint to retrieve the full list of configurations.
         - For each response, delegates merging to :meth:`_merge_configurations`.
         - Updates ``last_sync_time`` when the sync cycle completes.
+        - Tracks sync duration for Prometheus metrics.
 
         Any errors during communication with a node are logged and do not
         stop the synchronization process with other nodes.
@@ -293,9 +303,10 @@ class ClusterManager:
             return
 
         self.sync_in_progress = True
+        start_time = time.time()
+
         try:
             healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-
             if not healthy_nodes:
                 return
 
@@ -315,11 +326,19 @@ class ClusterManager:
                         if response.status_code == 200:
                             remote_configs = response.json()
                             await self._merge_configurations(remote_configs, node)
-
                     except Exception as e:
-                        logger.info("Failed to sync from {node.node_id}: {e}")
+                        logger.info("sync_node_failed", node_id=node.node_id, error=str(e))
 
             self.last_sync_time = datetime.now()
+
+            # Track sync duration metric
+            duration = time.time() - start_time
+            if self.cluster_sync_duration_histogram:
+                self.cluster_sync_duration_histogram.observe(duration)
+
+            logger.info("sync_completed",
+                       duration_seconds=round(duration, 3),
+                       nodes_synced=len(healthy_nodes))
 
         finally:
             self.sync_in_progress = False
@@ -343,8 +362,8 @@ class ClusterManager:
             is expected to provide concrete merging logic (upserts, conflict
             resolution, etc.).
         """
-
         # This is called by the sync process - implementation in api.py
+
 
     async def broadcast_create(self, key: str, value: dict, category: str, user_key: str):
         """
@@ -385,7 +404,7 @@ class ClusterManager:
                         json={"key": key, "value": value, "category": category}
                     )
                 except Exception as e:
-                    logger.info("Failed to broadcast create to {node.node_id}: {e}")
+                    logger.info("broadcast_create_failed", node_id=node.node_id, error=str(e))
 
     async def broadcast_update(self, key: str, value: dict, category: str, user_key: str):
         """
@@ -426,7 +445,7 @@ class ClusterManager:
                         json={"value": value, "category": category}
                     )
                 except Exception as e:
-                    logger.info("Failed to broadcast update to {node.node_id}: {e}")
+                    logger.info("broadcast_update_failed", node_id=node.node_id, error=str(e))
 
     async def broadcast_delete(self, key: str, user_key: str):
         """
@@ -461,7 +480,7 @@ class ClusterManager:
                         headers=headers
                     )
                 except Exception as e:
-                    logger.info("Failed to broadcast delete to {node.node_id}: {e}")
+                    logger.info("broadcast_delete_failed", node_id=node.node_id, error=str(e))
 
     async def federated_read(self, key: str, user_key: str) -> Optional[Dict]:
         """
@@ -505,18 +524,14 @@ class ClusterManager:
 
                     if response.status_code == 200:
                         return response.json()
-
                 except Exception as exc:
                     failed_nodes.append((node.base_url, str(exc)))
 
         # Log solo se tutti i nodi falliscono
         if failed_nodes:
-            print(
-                f"All nodes failed for key '{key}': {failed_nodes}"
-            )
+            logger.info("federated_read_all_failed", key=key, failed_nodes=len(failed_nodes))
 
         return None
-
 
     async def federated_list(self, category: Optional[str], user_key: str) -> List[Dict]:
         """
@@ -568,35 +583,32 @@ class ClusterManager:
                             if config["key"] not in seen_keys:
                                 all_configs.append(config)
                                 seen_keys.add(config["key"])
-
                 except Exception as e:
-                    logger.info("Failed to list from {node.node_id}: {e}")
+                    logger.info("federated_list_node_failed", node_id=node.node_id, error=str(e))
 
         return all_configs
 
     async def sync_encryption_salt(self, local_salt_path: str) -> bool:
         """
         Synchronize encryption salt across cluster nodes with bootstrap logic.
-        
+
         Logic:
         1. If this node has salt -> distribute to others
         2. If no one has salt -> first node (alphabetically) generates it
         3. If others have salt -> download from them
-        
+
         Args:
             local_salt_path: Path to the local salt file
-            
+
         Returns:
             True if salt is synchronized, False otherwise
         """
-
         # Check if we have a salt file
         has_local_salt = os.path.exists(local_salt_path)
 
         if has_local_salt:
             # We have salt - distribute to nodes that need it
-            logger.info("📤 Distributing salt from {self.node_id} to cluster...")
-
+            logger.info("salt_distribution_started", node_id=self.node_id)
             with open(local_salt_path, 'rb') as f:
                 salt_data = f.read()
 
@@ -614,18 +626,16 @@ class ClusterManager:
                         )
 
                         if response.status_code in [200, 409]:  # 409 = already exists
-                            logger.info("   ✅ Salt sent to {node.node_id}")
+                            logger.info("salt_sent_success", target_node=node.node_id)
                         else:
-                            logger.info("   ⚠️  Failed to send salt to {node.node_id}")
-
+                            logger.info("salt_sent_failed", target_node=node.node_id, status=response.status_code)
                     except Exception as e:
-                        logger.info("   ⚠️  Error sending salt to {node.node_id}: {e}")
+                        logger.info("salt_send_error", target_node=node.node_id, error=str(e))
 
             return True
-
         else:
             # We don't have salt - try to get from cluster
-            logger.info("📥 Requesting salt from cluster for {self.node_id}...")
+            logger.info("salt_request_started", node_id=self.node_id)
 
             # First, try to get from existing nodes
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -643,49 +653,40 @@ class ClusterManager:
                         if response.status_code == 200:
                             # Save received salt
                             salt_data = response.content
-
                             # Create directory if needed
                             os.makedirs(os.path.dirname(local_salt_path), exist_ok=True)
-
                             with open(local_salt_path, 'wb') as f:
                                 f.write(salt_data)
-
-                            logger.info("   ✅ Salt received from {node.node_id}")
+                            logger.info("salt_received_success", source_node=node.node_id)
                             return True
-
                     except Exception:  # nosec B112
                         continue
 
             # No node has salt - bootstrap logic
-            logger.info("   ℹ️  No node has salt yet - checking if we should generate...")
+            logger.info("salt_bootstrap_needed", node_id=self.node_id)
 
             # Determine if THIS node should generate the salt
             # Use alphabetical order of node IDs to ensure deterministic behavior
             all_node_ids = [self.node_id] + [n.node_id for n in self.nodes.values()]
             all_node_ids.sort()
-
             bootstrap_node = all_node_ids[0]  # First node alphabetically
 
             if self.node_id == bootstrap_node:
-                logger.info("   🎲 This node ({self.node_id}) is bootstrap node - generating salt...")
-
+                logger.info("salt_generation_started", bootstrap_node=self.node_id)
                 # Generate salt
                 salt_data = secrets.token_bytes(64)
-
                 # Create directory if needed
                 os.makedirs(os.path.dirname(local_salt_path), exist_ok=True)
-
                 # Save locally
                 with open(local_salt_path, 'wb') as f:
                     f.write(salt_data)
-
-                logger.info("✅ Salt generated and saved")
+                logger.info("salt_generated", size_bytes=len(salt_data))
 
                 # Wait a moment for other nodes to be ready
                 await asyncio.sleep(2)
 
                 # Distribute to other nodes
-                logger.info("📤 Distributing generated salt to cluster...")
+                logger.info("salt_distribution_started", node_id=self.node_id)
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     for node in self.nodes.values():
                         try:
@@ -700,22 +701,18 @@ class ClusterManager:
                             )
 
                             if response.status_code in [200, 409]:
-                                logger.info("      ✅ Salt sent to {node.node_id}")
+                                logger.info("salt_sent_success", target_node=node.node_id)
                             else:
-                                logger.info("      ⚠️  Failed to send to {node.node_id}")
-
+                                logger.info("salt_sent_failed", target_node=node.node_id, status=response.status_code)
                         except Exception as e:
-                            logger.info("      ⚠️  Error sending to {node.node_id}: {e}")
+                            logger.info("salt_send_error", target_node=node.node_id, error=str(e))
 
                 return True
-
             else:
-                logger.info("   ⏳ Waiting for bootstrap node ({bootstrap_node}) to generate salt...")
-
+                logger.info("salt_waiting_bootstrap", bootstrap_node=bootstrap_node, current_node=self.node_id)
                 # Wait and retry getting salt from bootstrap node
                 for attempt in range(5):  # 5 attempts
                     await asyncio.sleep(2)  # Wait 2 seconds between attempts
-
                     try:
                         headers = {}
                         if self.api_key:
@@ -739,19 +736,15 @@ class ClusterManager:
 
                                 if response.status_code == 200:
                                     salt_data = response.content
-
                                     os.makedirs(os.path.dirname(local_salt_path), exist_ok=True)
-
                                     with open(local_salt_path, 'wb') as f:
                                         f.write(salt_data)
-
-                                    logger.info("   ✅ Salt received from {node_id} (attempt {attempt + 1})")
+                                    logger.info("salt_received_success", source_node=node_id, attempt=attempt + 1)
                                     return True
-
                     except Exception as e:
-                        logger.info("   ⏳ Attempt {attempt + 1}/5 failed: {e}")
+                        logger.info("salt_receive_attempt_failed", attempt=attempt + 1, error=str(e))
 
-                logger.info("   ❌ Failed to obtain salt after all attempts")
+                logger.info("salt_receive_all_failed", attempts=5)
                 return False
 
     def get_cluster_status(self) -> Dict:
@@ -760,7 +753,6 @@ class ClusterManager:
 
         Returns:
             A dictionary with the following fields:
-
             - ``node_id`` (str): ID of the local node.
             - ``cluster_mode`` (str): Current mode, either "replica" or "federated".
             - ``total_nodes`` (int): Total number of known peer nodes.
