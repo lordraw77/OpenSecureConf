@@ -18,7 +18,7 @@ def main():
 
     # Initialize the client
     client = OpenSecureConfClient(
-        base_url="http://localhost:9000", user_key="my-secure-encryption-key"
+        base_url="http://localhost:9000", user_key="my-secure-encryption-key", api_key="cluster-secret-key-123"
     )
 
     try:
@@ -138,7 +138,7 @@ def context_manager_example():
     print("=== Context Manager Example ===")
 
     with OpenSecureConfClient(
-        base_url="http://localhost:9000", user_key="my-secure-encryption-key"
+        base_url="http://localhost:9000", user_key="my-secure-encryption-key", api_key="cluster-secret-key-123"
     ) as client:
 
         # Create a temporary configuration

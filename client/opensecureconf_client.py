@@ -37,12 +37,14 @@ class OpenSecureConfClient:
     Attributes:
         base_url (str): The base URL of the OpenSecureConf API server.
         user_key (str): The encryption key used for authentication and encryption/decryption.
+        api_key (Optional[str]): Optional API key for additional authentication.
         timeout (int): Request timeout in seconds.
 
     Example:
         >>> client = OpenSecureConfClient(
         ...     base_url="http://localhost:9000",
-        ...     user_key="my-secret-key-123"
+        ...     user_key="my-secret-key-123",
+        ...     api_key="optional-api-key"
         ... )
         >>> config = client.create("database", {"host": "localhost", "port": 5432})
         >>> print(config["value"])
@@ -50,7 +52,12 @@ class OpenSecureConfClient:
     """
 
     def __init__(
-        self, base_url: str, user_key: str, timeout: int = 30, verify_ssl: bool = True
+        self,
+        base_url: str,
+        user_key: str,
+        api_key: Optional[str] = None,
+        timeout: int = 30,
+        verify_ssl: bool = True
     ):
         """
         Initialize the OpenSecureConf client.
@@ -58,6 +65,7 @@ class OpenSecureConfClient:
         Args:
             base_url: The base URL of the OpenSecureConf API (e.g., "http://localhost:9000")
             user_key: User encryption key for authentication (minimum 8 characters)
+            api_key: Optional API key for additional authentication
             timeout: Request timeout in seconds (default: 30)
             verify_ssl: Whether to verify SSL certificates (default: True)
 
@@ -69,12 +77,22 @@ class OpenSecureConfClient:
 
         self.base_url = base_url.rstrip("/")
         self.user_key = user_key
+        self.api_key = api_key
         self.timeout = timeout
         self.verify_ssl = verify_ssl
         self._session = requests.Session()
-        self._session.headers.update(
-            {"x-user-key": self.user_key, "Content-Type": "application/json"}
-        )
+
+        # Setup headers
+        headers = {
+            "x-user-key": self.user_key, 
+            "Content-Type": "application/json"
+        }
+
+        # Add X-API-Key header if api_key is provided
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+
+        self._session.headers.update(headers)
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Any:
         """
