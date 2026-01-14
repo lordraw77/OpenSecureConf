@@ -21,6 +21,8 @@ services:
       - OSC_CLUSTER_NODE_ID=node1:9000
       - OSC_CLUSTER_NODES=node2:9000,node3:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
+      - OSC_LOG_LEVEL=DEBUG
+      - OSC_LOG_FORMAT=console
     volumes:
       - ./data/node1:/app/data
     networks:
@@ -47,6 +49,8 @@ services:
       - OSC_CLUSTER_NODE_ID=node2:9000
       - OSC_CLUSTER_NODES=node1:9000,node3:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
+      - OSC_LOG_LEVEL=DEBUG
+      - OSC_LOG_FORMAT=console
     volumes:
       - ./data/node2:/app/data
     networks:
@@ -73,6 +77,8 @@ services:
       - OSC_CLUSTER_NODE_ID=node3:9000
       - OSC_CLUSTER_NODES=node1:9000,node2:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
+      - OSC_LOG_LEVEL=DEBUG
+      - OSC_LOG_FORMAT=console
     volumes:
       - ./data/node3:/app/data
     networks:

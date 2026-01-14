@@ -9,6 +9,7 @@
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-positional-arguments
 
+
 """
 OpenSecureConf - Cluster Manager Module
 
@@ -43,9 +44,13 @@ from dataclasses import dataclass
 from datetime import datetime
 import secrets
 import httpx
+from async_logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ClusterMode(str, Enum):
+
     """Cluster operation modes.
 
     Attributes:
@@ -222,7 +227,7 @@ class ClusterManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Health check error: {e}")
+                logger.info("Health check error: {e}")
 
     async def _sync_loop(self):
         """Run the periodic synchronization loop (REPLICA mode only).
@@ -239,7 +244,7 @@ class ClusterManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Sync error: {e}")
+                logger.info("Sync error: {e}")
 
     async def _check_nodes_health(self):
         """Check the health status of all known nodes.
@@ -312,7 +317,7 @@ class ClusterManager:
                             await self._merge_configurations(remote_configs, node)
 
                     except Exception as e:
-                        print(f"Failed to sync from {node.node_id}: {e}")
+                        logger.info("Failed to sync from {node.node_id}: {e}")
 
             self.last_sync_time = datetime.now()
 
@@ -380,7 +385,7 @@ class ClusterManager:
                         json={"key": key, "value": value, "category": category}
                     )
                 except Exception as e:
-                    print(f"Failed to broadcast create to {node.node_id}: {e}")
+                    logger.info("Failed to broadcast create to {node.node_id}: {e}")
 
     async def broadcast_update(self, key: str, value: dict, category: str, user_key: str):
         """
@@ -421,7 +426,7 @@ class ClusterManager:
                         json={"value": value, "category": category}
                     )
                 except Exception as e:
-                    print(f"Failed to broadcast update to {node.node_id}: {e}")
+                    logger.info("Failed to broadcast update to {node.node_id}: {e}")
 
     async def broadcast_delete(self, key: str, user_key: str):
         """
@@ -456,7 +461,7 @@ class ClusterManager:
                         headers=headers
                     )
                 except Exception as e:
-                    print(f"Failed to broadcast delete to {node.node_id}: {e}")
+                    logger.info("Failed to broadcast delete to {node.node_id}: {e}")
 
     async def federated_read(self, key: str, user_key: str) -> Optional[Dict]:
         """
@@ -565,7 +570,7 @@ class ClusterManager:
                                 seen_keys.add(config["key"])
 
                 except Exception as e:
-                    print(f"Failed to list from {node.node_id}: {e}")
+                    logger.info("Failed to list from {node.node_id}: {e}")
 
         return all_configs
 
@@ -590,7 +595,7 @@ class ClusterManager:
 
         if has_local_salt:
             # We have salt - distribute to nodes that need it
-            print(f"📤 Distributing salt from {self.node_id} to cluster...")
+            logger.info("📤 Distributing salt from {self.node_id} to cluster...")
 
             with open(local_salt_path, 'rb') as f:
                 salt_data = f.read()
@@ -609,18 +614,18 @@ class ClusterManager:
                         )
 
                         if response.status_code in [200, 409]:  # 409 = already exists
-                            print(f"   ✅ Salt sent to {node.node_id}")
+                            logger.info("   ✅ Salt sent to {node.node_id}")
                         else:
-                            print(f"   ⚠️  Failed to send salt to {node.node_id}")
+                            logger.info("   ⚠️  Failed to send salt to {node.node_id}")
 
                     except Exception as e:
-                        print(f"   ⚠️  Error sending salt to {node.node_id}: {e}")
+                        logger.info("   ⚠️  Error sending salt to {node.node_id}: {e}")
 
             return True
 
         else:
             # We don't have salt - try to get from cluster
-            print(f"📥 Requesting salt from cluster for {self.node_id}...")
+            logger.info("📥 Requesting salt from cluster for {self.node_id}...")
 
             # First, try to get from existing nodes
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -645,14 +650,14 @@ class ClusterManager:
                             with open(local_salt_path, 'wb') as f:
                                 f.write(salt_data)
 
-                            print(f"   ✅ Salt received from {node.node_id}")
+                            logger.info("   ✅ Salt received from {node.node_id}")
                             return True
 
                     except Exception:  # nosec B112
                         continue
 
             # No node has salt - bootstrap logic
-            print("   ℹ️  No node has salt yet - checking if we should generate...")
+            logger.info("   ℹ️  No node has salt yet - checking if we should generate...")
 
             # Determine if THIS node should generate the salt
             # Use alphabetical order of node IDs to ensure deterministic behavior
@@ -662,7 +667,7 @@ class ClusterManager:
             bootstrap_node = all_node_ids[0]  # First node alphabetically
 
             if self.node_id == bootstrap_node:
-                print(f"   🎲 This node ({self.node_id}) is bootstrap node - generating salt...")
+                logger.info("   🎲 This node ({self.node_id}) is bootstrap node - generating salt...")
 
                 # Generate salt
                 salt_data = secrets.token_bytes(64)
@@ -674,13 +679,13 @@ class ClusterManager:
                 with open(local_salt_path, 'wb') as f:
                     f.write(salt_data)
 
-                print("✅ Salt generated and saved")
+                logger.info("✅ Salt generated and saved")
 
                 # Wait a moment for other nodes to be ready
                 await asyncio.sleep(2)
 
                 # Distribute to other nodes
-                print("📤 Distributing generated salt to cluster...")
+                logger.info("📤 Distributing generated salt to cluster...")
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     for node in self.nodes.values():
                         try:
@@ -695,17 +700,17 @@ class ClusterManager:
                             )
 
                             if response.status_code in [200, 409]:
-                                print(f"      ✅ Salt sent to {node.node_id}")
+                                logger.info("      ✅ Salt sent to {node.node_id}")
                             else:
-                                print(f"      ⚠️  Failed to send to {node.node_id}")
+                                logger.info("      ⚠️  Failed to send to {node.node_id}")
 
                         except Exception as e:
-                            print(f"      ⚠️  Error sending to {node.node_id}: {e}")
+                            logger.info("      ⚠️  Error sending to {node.node_id}: {e}")
 
                 return True
 
             else:
-                print(f"   ⏳ Waiting for bootstrap node ({bootstrap_node}) to generate salt...")
+                logger.info("   ⏳ Waiting for bootstrap node ({bootstrap_node}) to generate salt...")
 
                 # Wait and retry getting salt from bootstrap node
                 for attempt in range(5):  # 5 attempts
@@ -740,13 +745,13 @@ class ClusterManager:
                                     with open(local_salt_path, 'wb') as f:
                                         f.write(salt_data)
 
-                                    print(f"   ✅ Salt received from {node_id} (attempt {attempt + 1})")
+                                    logger.info("   ✅ Salt received from {node_id} (attempt {attempt + 1})")
                                     return True
 
                     except Exception as e:
-                        print(f"   ⏳ Attempt {attempt + 1}/5 failed: {e}")
+                        logger.info("   ⏳ Attempt {attempt + 1}/5 failed: {e}")
 
-                print("   ❌ Failed to obtain salt after all attempts")
+                logger.info("   ❌ Failed to obtain salt after all attempts")
                 return False
 
     def get_cluster_status(self) -> Dict:

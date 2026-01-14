@@ -17,7 +17,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY api.py config_manager.py cluster_manager.py ./
+COPY api.py ./
+COPY config_manager.py ./
+COPY cluster_manager.py ./
+COPY async_logger.py ./
 
 # Create directory for data persistence
 RUN mkdir -p /app/data
