@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensecureconf-client"
-version = "1.0.2"
-description = "Python client library for OpenSecureConf encrypted configuration management API"
-readme = "README.md"
+version = "2.0.0"
+description = "Python client library for OpenSecureConf encrypted configuration management API with clustering support"
+readme = "README_CLIENT_COMPLETE.md"  # Updated to use the complete README
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
@@ -15,7 +15,16 @@ authors = [
 maintainers = [
     {name = "Alessandro Pioli", email = "alessandro.pioli+apioli-pypi@gmail.com"}
 ]
-keywords = ["configuration", "encryption", "api-client", "secure", "config-management"]
+keywords = [
+    "configuration", 
+    "encryption", 
+    "api-client", 
+    "secure", 
+    "config-management",
+    "clustering",
+    "distributed-config",
+    "secrets-management"
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -26,11 +35,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Security :: Cryptography",
+    "Topic :: System :: Distributed Computing",
 ]
 dependencies = [
     "requests>=2.28.0",
+    "urllib3>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +52,11 @@ dev = [
     "black>=23.0.0",
     "flake8>=6.0.0",
     "mypy>=1.0.0",
+    "pylint>=2.17.0",
+    "isort>=5.12.0",
+]
+enhanced = [
+    "urllib3>=2.0.0",  # For enhanced retry features
 ]
 
 [project.urls]
@@ -47,6 +64,56 @@ Homepage = "https://github.com/lordraw77/OpenSecureConf"
 Documentation = "https://github.com/lordraw77/OpenSecureConf#readme"
 Repository = "https://github.com/lordraw77/OpenSecureConf"
 Issues = "https://github.com/lordraw77/OpenSecureConf/issues"
+Changelog = "https://github.com/lordraw77/OpenSecureConf/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
+# Include all Python files from the root (opensecureconf_client.py)
 py-modules = ["opensecureconf_client"]
+# Enable automatic discovery of data files via MANIFEST.in
+include-package-data = true
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt"]
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+include = '\.pyi?$'
+
+# isort configuration
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+
+# pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests", "."]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=opensecureconf_client --cov-report=html --cov-report=term"
+
+# mypy configuration
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["opensecureconf_client", "opensecureconf_client_enhanced"]
+omit = ["test_*.py", "example_*.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
