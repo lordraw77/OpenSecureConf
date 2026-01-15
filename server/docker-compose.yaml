@@ -10,23 +10,16 @@ services:
     ports:
       - "${OSC_HOST_PORT:-9000}:9000"
     environment:
-      # Server Configuration
-      - OSC_HOST=0.0.0.0
-      - PORT=9000
-      - OSC_WORKERS=${OSC_WORKERS:-4}
-
-      # Database Configuration
-      - OSC_DATABASE_PATH=${OSC_DATABASE_PATH:-/app/data/configurations.db}
-
-      # Encryption Configuration
-      - OSC_SALT_FILE_PATH=${OSC_SALT_FILE_PATH:-/app/data/encryption.salt}
-
-      # Security Settings
-      - OSC_MIN_USER_KEY_LENGTH=${OSC_MIN_USER_KEY_LENGTH:-8}
-
-      # Optional: API Key requirement (if you want to add extra security)
-      # - OSC_API_KEY_REQUIRED=${OSC_API_KEY_REQUIRED:-false}
-
+      - OSC_HOST_PORT=9000
+      - OSC_WORKERS=2
+      - OSC_DATABASE_PATH=/app/data/configurations.db
+      - OSC_SALT_FILE_PATH=/app/data/encryption.salt
+      - OSC_MIN_USER_KEY_LENGTH=8
+      - OSC_API_KEY_REQUIRED=false
+      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_LOG_LEVEL=INFO
+      - OSC_LOG_FORMAT=console
+      - prometheus_multiproc_dir=/app/prometheus_multiproc
     volumes:
       # Persist database and encryption salt
       - opensecureconf-data:/app/data

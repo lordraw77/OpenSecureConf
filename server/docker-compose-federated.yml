@@ -6,7 +6,7 @@ services:
     build: .
     container_name: opensecureconf-node1
     ports:
-      - "9001:9000"
+      - "9000:9000"
     environment:
       - OSC_HOST_PORT=9000
       - OSC_WORKERS=2
@@ -23,6 +23,7 @@ services:
       - OSC_CLUSTER_SYNC_INTERVAL=30
       - OSC_LOG_LEVEL=DEBUG
       - OSC_LOG_FORMAT=console
+      - prometheus_multiproc_dir=/app/prometheus_multiproc
     volumes:
       - ./data/node1:/app/data
     networks:
@@ -51,6 +52,7 @@ services:
       - OSC_CLUSTER_SYNC_INTERVAL=30
       - OSC_LOG_LEVEL=DEBUG
       - OSC_LOG_FORMAT=console
+      - prometheus_multiproc_dir=/app/prometheus_multiproc
     volumes:
       - ./data/node2:/app/data
     networks:
@@ -79,6 +81,7 @@ services:
       - OSC_CLUSTER_SYNC_INTERVAL=30
       - OSC_LOG_LEVEL=DEBUG
       - OSC_LOG_FORMAT=console
+      - prometheus_multiproc_dir=/app/prometheus_multiproc
     volumes:
       - ./data/node3:/app/data
     networks:

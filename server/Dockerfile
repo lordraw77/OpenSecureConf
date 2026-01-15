@@ -17,14 +17,17 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY api.py ./
+COPY main.py ./
 COPY config_manager.py ./
 COPY cluster_manager.py ./
 COPY async_logger.py ./
+COPY core ./core/
+COPY routes ./routes/
+COPY utils ./utils/
 
 # Create directory for data persistence
 RUN mkdir -p /app/data
-
+RUN mkdir -p /app/prometheus_multiproc
 # Expose port (configurable via environment variable)
 EXPOSE 9000
 
@@ -32,4 +35,4 @@ EXPOSE 9000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3     CMD python -c "import requests; requests.get('http://localhost:9000/', timeout=5)"
 
 # Run the application with uvicorn
-CMD ["sh", "-c", "uvicorn api:app --host ${OSC_HOST:-0.0.0.0} --port ${OSC_HOST_PORT:-9000} --workers ${OSC_WORKERS:-4}"]
+CMD ["sh", "-c", "uvicorn main:app --host ${OSC_HOST:-0.0.0.0} --port ${OSC_HOST_PORT:-9000} --workers ${OSC_WORKERS:-4}"]
