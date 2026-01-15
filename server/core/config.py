@@ -81,6 +81,34 @@ OSC_WORKERS = int(os.getenv("OSC_WORKERS", "4"))
 
 
 # =============================================================================
+# HTTPS/SSL CONFIGURATION
+# =============================================================================
+
+# Enable/disable HTTPS
+# When enabled, server will use SSL/TLS encryption
+# Requires valid SSL certificate and key files
+OSC_HTTPS_ENABLED = os.getenv("OSC_HTTPS_ENABLED", "false").lower() == "true"
+
+# Path to SSL certificate file
+# For production: Use certificate from Let's Encrypt or trusted CA
+# For development: Use self-signed certificate
+# Example: /etc/letsencrypt/live/yourdomain.com/fullchain.pem
+OSC_SSL_CERTFILE = os.getenv("OSC_SSL_CERTFILE", "./cert.pem")
+
+# Path to SSL private key file
+# CRITICAL: Keep this file secure with restricted permissions (chmod 600)
+# Example: /etc/letsencrypt/live/yourdomain.com/privkey.pem
+OSC_SSL_KEYFILE = os.getenv("OSC_SSL_KEYFILE", "./key.pem")
+
+# Optional: Password for encrypted private key
+OSC_SSL_KEYFILE_PASSWORD = os.getenv("OSC_SSL_KEYFILE_PASSWORD", None)
+
+# Optional: Path to CA certificate bundle for client certificate verification
+OSC_SSL_CA_CERTS = os.getenv("OSC_SSL_CA_CERTS", None)
+
+
+
+# =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
 

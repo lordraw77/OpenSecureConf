@@ -30,7 +30,7 @@ run_bandit() {
 
 run_bandit "client/opensecureconf_client.py" "client"
 run_bandit "gui/gui.py" "gui"
-run_bandit "server/" "server"
+run_bandit "server/*.py" "server"
 
 
 rm -rf clientbandit.json guibandit.json serverbandit.json

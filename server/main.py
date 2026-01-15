@@ -37,7 +37,11 @@ from core.config import (
     OSC_HOST, OSC_HOST_PORT, OSC_WORKERS,
     OSC_API_KEY, OSC_API_KEY_REQUIRED,
     OSC_CLUSTER_ENABLED, OSC_CLUSTER_MODE, OSC_CLUSTER_NODE_ID,
-    OSC_CLUSTER_NODES, OSC_CLUSTER_SYNC_INTERVAL, OSC_SALT_FILE_PATH,prometheus_multiproc_dir
+    OSC_CLUSTER_NODES, OSC_CLUSTER_SYNC_INTERVAL, OSC_SALT_FILE_PATH,prometheus_multiproc_dir,OSC_HTTPS_ENABLED,
+    OSC_SSL_CERTFILE,
+    OSC_SSL_KEYFILE,
+    OSC_SSL_KEYFILE_PASSWORD,
+    OSC_SSL_CA_CERTS
 )
 from core.metrics import (
     http_requests_total, http_request_duration_seconds,
@@ -188,13 +192,30 @@ app.include_router(backup_routes.router)
 # ========== APPLICATION ENTRY POINT ==========
 
 if __name__ == "__main__":
+    # base configuration for uvicorn
     import uvicorn
-
-    uvicorn.run(
-        "main:app",
-        host=OSC_HOST,
-        port=OSC_HOST_PORT,
-        workers=OSC_WORKERS,
-        reload=False,
-        log_level="info",
-    )
+    config = {
+        "app": "main:app",
+        "host": OSC_HOST,
+        "port": OSC_HOST_PORT,
+        "workers": OSC_WORKERS,
+    }
+    
+    # add https configuration if enabled
+    if OSC_HTTPS_ENABLED:
+        config.update({
+            "ssl_keyfile": OSC_SSL_KEYFILE,
+            "ssl_certfile": OSC_SSL_CERTFILE,
+        })
+        
+        # add optional ssl parameters
+        if OSC_SSL_KEYFILE_PASSWORD:
+            config["ssl_keyfile_password"] = OSC_SSL_KEYFILE_PASSWORD
+        if OSC_SSL_CA_CERTS:
+            config["ssl_ca_certs"] = OSC_SSL_CA_CERTS
+            
+        print(f"[Server] Starting with HTTPS enabled on port {OSC_HOST_PORT}")
+    else:
+        print(f"[Server] Starting with HTTP on port {OSC_HOST_PORT}")
+    
+    uvicorn.run(**config)

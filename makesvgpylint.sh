@@ -13,7 +13,7 @@ echo "Pylint score: $score"
 rm -f guipylint.svg
 anybadge --label="gui pylint" --value=$score --file=guipylint.svg 2=red 4=orange 8=yellow 10=green
 
-pylint  server/api.py server/config_manager.py | tee serverpylint.txt
+pylint  server/*.py | tee serverpylint.txt
 score=$(sed -n 's/^Your code has been rated at \([-0-9.]*\)\/.*/\1/p' serverpylint.txt)
 echo "Pylint score: $score"
 rm -f serverpylint.svg
