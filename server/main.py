@@ -200,22 +200,22 @@ if __name__ == "__main__":
         "port": OSC_HOST_PORT,
         "workers": OSC_WORKERS,
     }
-    
+
     # add https configuration if enabled
     if OSC_HTTPS_ENABLED:
         config.update({
             "ssl_keyfile": OSC_SSL_KEYFILE,
             "ssl_certfile": OSC_SSL_CERTFILE,
         })
-        
+
         # add optional ssl parameters
         if OSC_SSL_KEYFILE_PASSWORD:
             config["ssl_keyfile_password"] = OSC_SSL_KEYFILE_PASSWORD
         if OSC_SSL_CA_CERTS:
             config["ssl_ca_certs"] = OSC_SSL_CA_CERTS
-            
+
         print(f"[Server] Starting with HTTPS enabled on port {OSC_HOST_PORT}")
     else:
         print(f"[Server] Starting with HTTP on port {OSC_HOST_PORT}")
-    
+
     uvicorn.run(**config)
