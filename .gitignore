@@ -209,3 +209,20 @@ __marimo__/
 *.db
 /server/encryption.salt
 /server/data/*
+
+
+# Node.js / JavaScript Client
+client-js/node_modules/
+client-js/dist/
+client-js/coverage/
+client-js/*.tgz
+client-js/.eslintcache
+client-js/package-lock.json
+client-js/yarn.lock
+client-js/pnpm-lock.yaml
+
+# Logs
+client-js/*.log
+client-js/npm-debug.log*
+client-js/yarn-debug.log*
+client-js/yarn-error.log*

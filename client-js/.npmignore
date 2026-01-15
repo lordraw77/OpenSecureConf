@@ -1,0 +1,20 @@
+# Source files
+src/
+tests/
+examples/
+
+# Config files
+tsconfig.json
+jest.config.js
+.eslintrc.json
+.prettierrc
+
+# Development files
+*.test.ts
+*.test.js
+.github/
+coverage/
+node_modules/
+
+# Documentation
+PUBLISHING_GUIDE.md
