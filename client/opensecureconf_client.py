@@ -562,8 +562,8 @@ class OpenSecureConfClient:
         return results
 
     def bulk_read(
-        self, 
-        keys: List[str], 
+        self,
+        keys: List[str],
         ignore_errors: bool = False
     ) -> List[Dict[str, Any]]:
         """

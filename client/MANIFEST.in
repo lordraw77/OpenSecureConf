@@ -1,7 +1,6 @@
 include README.md
 include LICENSE
 include pyproject.toml
-include ADVANCED_EXAMPLES.md          ← Il tuo file!
-include CHANGELOG.md
+include ADVANCED_EXAMPLES.md
 include example_usage.py
 include example_enhanced_usage.py

@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensecureconf-client"
-version = "2.0.0"
+version = "2.0.2"
 description = "Python client library for OpenSecureConf encrypted configuration management API with clustering support"
-readme = "README_CLIENT_COMPLETE.md"  # Updated to use the complete README
+readme = "README.md"  # Updated to use the complete README
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
@@ -61,10 +61,10 @@ enhanced = [
 
 [project.urls]
 Homepage = "https://github.com/lordraw77/OpenSecureConf"
-Documentation = "https://github.com/lordraw77/OpenSecureConf#readme"
-Repository = "https://github.com/lordraw77/OpenSecureConf"
+Documentation = "https://github.com/lordraw77/OpenSecureConf/blob/main/client/README.md"
+Repository = "https://github.com/lordraw77/OpenSecureConf/tree/main/client"
 Issues = "https://github.com/lordraw77/OpenSecureConf/issues"
-Changelog = "https://github.com/lordraw77/OpenSecureConf/blob/main/CHANGELOG.md"
+ 
 
 [tool.setuptools]
 # Include all Python files from the root (opensecureconf_client.py)
