@@ -5,6 +5,8 @@ This module provides encrypted configuration management with hybrid key encrypti
 combining a random salt with user-defined keys for secure storage in SQLite.
 Fully thread-safe for concurrent access in multi-worker environments.
 
+Enhanced with timestamps tracking (created_at, updated_at) and environment field.
+
 Classes:
     ConfigurationModel: SQLAlchemy ORM model for database schema
     EncryptionManager: Handles hybrid encryption/decryption operations
@@ -15,10 +17,11 @@ import os
 import secrets
 import base64
 import json
+from datetime import datetime
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-from sqlalchemy import create_engine, Column, String, Text, Integer
+from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -34,13 +37,20 @@ class ConfigurationModel(Base):  # pylint: disable=too-few-public-methods
         key (str): Unique configuration key (indexed for performance)
         encrypted_value (str): Fernet-encrypted JSON value
         category (str): Optional category for grouping configurations
+        environment (str): Environment identifier (e.g., dev, staging, production)
+        created_at (datetime): Timestamp when the configuration was created
+        updated_at (datetime): Timestamp when the configuration was last updated
     """
 
     __tablename__ = "configurations"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(255), unique=True, nullable=False, index=True)
     encrypted_value = Column(Text, nullable=False)
-    category = Column(String(100), nullable=True)
+    category = Column(String(100), nullable=True, index=True)
+    environment = Column(String(100), nullable=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class EncryptionManager:
@@ -192,19 +202,22 @@ class ConfigurationManager:
         Base.metadata.create_all(self.engine)
         self.session_factory = sessionmaker(bind=self.engine)
 
-    def create(self, key: str, value: dict, category: str = None) -> dict:
+    def create(self, key: str, value: dict, category: str = None, environment: str = None) -> dict:
         """
         Create a new encrypted configuration entry.
 
         Thread-safe operation with automatic session management.
+        Sets created_at and updated_at to current UTC timestamp.
 
         Args:
             key (str): Unique configuration key
             value (dict): Configuration data to encrypt and store
             category (str, optional): Category for grouping configurations
+            environment (str, optional): Environment identifier (dev, staging, production)
 
         Returns:
-            dict: Created configuration with keys: id, key, category, value
+            dict: Created configuration with keys: id, key, category, environment, value,
+                  created_at, updated_at
 
         Raises:
             ValueError: If configuration with the same key already exists
@@ -218,8 +231,16 @@ class ConfigurationManager:
 
             # Encrypt the value
             encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
+
+            # Create configuration with timestamps
+            now = datetime.utcnow()
             config = ConfigurationModel(
-                key=key, encrypted_value=encrypted_value, category=category
+                key=key,
+                encrypted_value=encrypted_value,
+                category=category,
+                environment=environment,
+                created_at=now,
+                updated_at=now
             )
 
             session.add(config)
@@ -229,12 +250,16 @@ class ConfigurationManager:
                 "id": config.id,
                 "key": config.key,
                 "category": config.category,
+                "environment": config.environment,
                 "value": value,
+                "created_at": config.created_at.isoformat() + "Z",
+                "updated_at": config.updated_at.isoformat() + "Z"
             }
+
         finally:
             session.close()
 
-    def read(self, key: str) -> dict:
+    def read(self, key: str, include_timestamps: bool = False) -> dict:
         """
         Read and decrypt a configuration entry by key.
 
@@ -242,9 +267,11 @@ class ConfigurationManager:
 
         Args:
             key (str): Configuration key to retrieve
+            include_timestamps (bool): If True, include created_at and updated_at in response
 
         Returns:
-            dict: Configuration with keys: id, key, category, value (decrypted)
+            dict: Configuration with keys: id, key, category, environment, value (decrypted)
+                  If include_timestamps=True, also includes: created_at, updated_at
 
         Raises:
             ValueError: If configuration key not found
@@ -258,28 +285,40 @@ class ConfigurationManager:
             # Decrypt the value
             decrypted_value = self.encryption_manager.decrypt(config.encrypted_value)
 
-            return {
+            result = {
                 "id": config.id,
                 "key": config.key,
                 "category": config.category,
+                "environment": config.environment,
                 "value": json.loads(decrypted_value),
             }
+
+            # Include timestamps if requested (full mode)
+            if include_timestamps:
+                result["created_at"] = config.created_at.isoformat() + "Z"
+                result["updated_at"] = config.updated_at.isoformat() + "Z"
+
+            return result
+
         finally:
             session.close()
 
-    def update(self, key: str, value: dict, category: str = None) -> dict:
+    def update(self, key: str, value: dict, category: str = None, environment: str = None) -> dict:
         """
         Update an existing configuration with new encrypted value.
 
         Thread-safe operation with automatic session management.
+        Updates the updated_at timestamp to current UTC time.
 
         Args:
             key (str): Configuration key to update
             value (dict): New configuration data to encrypt and store
             category (str, optional): New category (if None, keeps existing)
+            environment (str, optional): New environment (if None, keeps existing)
 
         Returns:
-            dict: Updated configuration with keys: id, key, category, value
+            dict: Updated configuration with keys: id, key, category, environment, value,
+                  created_at, updated_at
 
         Raises:
             ValueError: If configuration key not found
@@ -292,8 +331,15 @@ class ConfigurationManager:
 
             # Encrypt the new value
             config.encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
+
+            # Update fields
             if category is not None:
                 config.category = category
+            if environment is not None:
+                config.environment = environment
+
+            # Update timestamp
+            config.updated_at = datetime.utcnow()
 
             session.commit()
 
@@ -301,8 +347,12 @@ class ConfigurationManager:
                 "id": config.id,
                 "key": config.key,
                 "category": config.category,
+                "environment": config.environment,
                 "value": value,
+                "created_at": config.created_at.isoformat() + "Z",
+                "updated_at": config.updated_at.isoformat() + "Z"
             }
+
         finally:
             session.close()
 
@@ -330,43 +380,105 @@ class ConfigurationManager:
             session.delete(config)
             session.commit()
             return True
+
         finally:
             session.close()
 
-    def list_all(self, category: str = None) -> list:
+    def list_all(self, category: str = None, environment: str = None,
+                 include_timestamps: bool = False) -> list:
         """
-        List all configurations with optional category filter.
+        List all configurations with optional filters.
 
         All values are automatically decrypted.
         Thread-safe operation with automatic session management.
 
         Args:
             category (str, optional): Filter by category (if None, returns all)
+            environment (str, optional): Filter by environment (if None, returns all)
+            include_timestamps (bool): If True, include created_at and updated_at in response
 
         Returns:
-            list[dict]: List of configurations, each with keys: id, key, category, value
+            list[dict]: List of configurations, each with keys: id, key, category, 
+                        environment, value. If include_timestamps=True, also includes:
+                        created_at, updated_at
         """
         session = self.session_factory()
         try:
             query = session.query(ConfigurationModel)
+
             if category:
                 query = query.filter_by(category=category)
 
+            if environment:
+                query = query.filter_by(environment=environment)
+
             configs = query.all()
+
             result = []
             for config in configs:
-                decrypted_value = self.encryption_manager.decrypt(
-                    config.encrypted_value
-                )
-                result.append(
-                    {
-                        "id": config.id,
-                        "key": config.key,
-                        "category": config.category,
-                        "value": json.loads(decrypted_value),
-                    }
-                )
+                decrypted_value = self.encryption_manager.decrypt(config.encrypted_value)
+
+                config_dict = {
+                    "id": config.id,
+                    "key": config.key,
+                    "category": config.category,
+                    "environment": config.environment,
+                    "value": json.loads(decrypted_value),
+                }
+
+                # Include timestamps if requested (full mode)
+                if include_timestamps:
+                    config_dict["created_at"] = config.created_at.isoformat() + "Z"
+                    config_dict["updated_at"] = config.updated_at.isoformat() + "Z"
+
+                result.append(config_dict)
 
             return result
+
+        finally:
+            session.close()
+
+    def get_statistics(self) -> dict:
+        """
+        Get statistics about stored configurations.
+
+        Returns:
+            dict: Statistics containing:
+                - total_keys: Total number of configuration keys
+                - total_categories: Number of distinct categories
+                - total_environments: Number of distinct environments
+                - keys_by_category: Dictionary mapping categories to key counts
+                - keys_by_environment: Dictionary mapping environments to key counts
+        """
+        session = self.session_factory()
+        try:
+            # Total keys
+            total_keys = session.query(ConfigurationModel).count()
+
+            # Get all configurations to calculate statistics
+            all_configs = session.query(
+                ConfigurationModel.category,
+                ConfigurationModel.environment
+            ).all()
+
+            # Count by category
+            categories = {}
+            environments = {}
+
+            for config in all_configs:
+                cat = config.category or "uncategorized"
+                env = config.environment or "unspecified"
+
+                categories[cat] = categories.get(cat, 0) + 1
+                environments[env] = environments.get(env, 0) + 1
+
+            return {
+                "total_keys": total_keys,
+                "total_categories": len(categories),
+                "total_environments": len(environments),
+                "keys_by_category": categories,
+                "keys_by_environment": environments
+            }
+
         finally:
             session.close()
