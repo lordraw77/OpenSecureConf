@@ -766,8 +766,8 @@ class ClusterManager:
         return {
             "node_id": self.node_id,
             "cluster_mode": self.cluster_mode.value,
-            "total_nodes": len(self.nodes),
-            "healthy_nodes": sum(1 for n in self.nodes.values() if n.is_healthy),
+            "total_nodes": len(self.nodes) + 1,  # +1 per il nodo corrente
+            "healthy_nodes": sum(1 for n in self.nodes.values() if n.is_healthy) + 1,  # +1 per il nodo corrente (sempre healthy)
             "last_sync": self.last_sync_time.isoformat() if self.last_sync_time else None,
             "nodes": [node.to_dict() for node in self.nodes.values()]
         }

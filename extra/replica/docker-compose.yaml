@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Node 1 - FEDERATED mode
   node1:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node1
     ports:
       - "9001:9000"
@@ -17,7 +17,7 @@ services:
       - OSC_API_KEY=cluster-secret-key-123
       # Cluster configuration
       - OSC_CLUSTER_ENABLED=true
-      - OSC_CLUSTER_MODE=federated
+      - OSC_CLUSTER_MODE=replica
       - OSC_CLUSTER_NODE_ID=node1:9000
       - OSC_CLUSTER_NODES=node2:9000,node3:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
@@ -32,7 +32,7 @@ services:
 
   # Node 2 - FEDERATED mode
   node2:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node2
     ports:
       - "9002:9000"
@@ -46,7 +46,7 @@ services:
       - OSC_API_KEY=cluster-secret-key-123
       # Cluster configuration
       - OSC_CLUSTER_ENABLED=true
-      - OSC_CLUSTER_MODE=federated
+      - OSC_CLUSTER_MODE=replica
       - OSC_CLUSTER_NODE_ID=node2:9000
       - OSC_CLUSTER_NODES=node1:9000,node3:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
@@ -61,7 +61,7 @@ services:
 
   # Node 3 - FEDERATED mode
   node3:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node3
     ports:
       - "9003:9000"
@@ -75,7 +75,7 @@ services:
       - OSC_API_KEY=cluster-secret-key-123
       # Cluster configuration
       - OSC_CLUSTER_ENABLED=true
-      - OSC_CLUSTER_MODE=federated
+      - OSC_CLUSTER_MODE=replica
       - OSC_CLUSTER_NODE_ID=node3:9000
       - OSC_CLUSTER_NODES=node1:9000,node2:9000
       - OSC_CLUSTER_SYNC_INTERVAL=30
@@ -91,3 +91,4 @@ services:
 networks:
   cluster_network:
     driver: bridge
+

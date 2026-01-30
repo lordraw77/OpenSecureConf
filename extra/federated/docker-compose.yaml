@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Node 1 - FEDERATED mode
   node1:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node1
     ports:
       - "9001:9000"
@@ -32,7 +32,7 @@ services:
 
   # Node 2 - FEDERATED mode
   node2:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node2
     ports:
       - "9002:9000"
@@ -61,7 +61,7 @@ services:
 
   # Node 3 - FEDERATED mode
   node3:
-    build: .
+    image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node3
     ports:
       - "9003:9000"
@@ -91,3 +91,4 @@ services:
 networks:
   cluster_network:
     driver: bridge
+
