@@ -4,9 +4,19 @@
  * A comprehensive REST API client for OpenSecureConf - Encrypted configuration
  * management system with cluster support and HTTPS/SSL.
  * 
- * @version 2.2.0
+ * @version 2.3.1
  * @license MIT
  */
+
+/**
+ * Supported configuration value types
+ */
+export type ConfigValue = 
+  | Record<string, any>  // Object/Dict
+  | string               // String
+  | number               // Number/Int
+  | boolean              // Boolean
+  | any[];               // Array/List
 
 /**
  * Configuration entry interface
@@ -14,8 +24,9 @@
 export interface ConfigEntry {
   id?: number;
   key: string;
-  value: Record<string, any>;
+  value: ConfigValue;
   category?: string;
+  environment?: string;
 }
 
 /**
@@ -52,6 +63,7 @@ export class OpenSecureConfError extends Error {
     this.name = 'OpenSecureConfError';
     this.statusCode = statusCode;
     this.detail = detail;
+
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, OpenSecureConfError);
     }
@@ -62,9 +74,9 @@ export class OpenSecureConfError extends Error {
  * Detect if running in Node.js environment
  */
 function isNodeEnvironment(): boolean {
-  return typeof process !== 'undefined' && 
-         process.versions != null && 
-         process.versions.node != null;
+  return typeof process !== 'undefined' &&
+    process.versions != null &&
+    process.versions.node != null;
 }
 
 /**
@@ -86,12 +98,12 @@ function isNodeEnvironment(): boolean {
  * });
  * 
  * @example
- * // HTTPS with self-signed certificate (Node.js)
- * const client = new OpenSecureConfClient({
- *   baseUrl: 'https://localhost:9443',
- *   userKey: 'my-secret-key-12345',
- *   rejectUnauthorized: false // Accept self-signed certs
- * });
+ * // Create configurations with different value types
+ * await client.create('database', { host: 'localhost', port: 5432 }, 
+ *                     { category: 'config', environment: 'production' });
+ * await client.create('api_token', 'secret-token-123', 
+ *                     { category: 'auth', environment: 'staging' });
+ * await client.create('max_retries', 3, { environment: 'production' });
  */
 export class OpenSecureConfClient {
   private baseUrl: string;
@@ -191,6 +203,7 @@ export class OpenSecureConfClient {
       return data as T;
     } catch (error) {
       clearTimeout(timeoutId);
+
       if (error instanceof OpenSecureConfError) {
         throw error;
       }
@@ -229,17 +242,53 @@ export class OpenSecureConfClient {
 
   /**
    * Create a new configuration entry
+   * 
+   * @param key - Unique configuration key (1-255 characters)
+   * @param value - Configuration value (object, string, number, boolean, or array)
+   * @param options - Optional category and environment
+   * 
+   * @example
+   * // Object value with category and environment
+   * await client.create('database', { host: 'localhost', port: 5432 }, 
+   *                     { category: 'config', environment: 'production' });
+   * 
+   * @example
+   * // String value with environment only
+   * await client.create('api_token', 'secret-token-123', 
+   *                     { environment: 'staging' });
+   * 
+   * @example
+   * // Number value with category
+   * await client.create('max_retries', 3, { category: 'settings' });
+   * 
+   * @example
+   * // Boolean without options
+   * await client.create('debug_enabled', false);
    */
-  async create(key: string, value: Record<string, any>, category?: string): Promise<ConfigEntry> {
+  async create(
+    key: string, 
+    value: ConfigValue, 
+    options?: { category?: string; environment?: string }
+  ): Promise<ConfigEntry> {
     return this.request('POST', '/configs', {
       key,
       value,
-      category,
+      category: options?.category,
+      environment: options?.environment,
     });
   }
 
   /**
    * Read a configuration entry by key
+   * 
+   * @param key - Configuration key to retrieve
+   * @returns Configuration entry with decrypted value (type preserved)
+   * 
+   * @example
+   * const config = await client.read('database');
+   * console.log(config.value);       // { host: 'localhost', port: 5432 }
+   * console.log(config.environment); // 'production'
+   * console.log(config.category);    // 'config'
    */
   async read(key: string): Promise<ConfigEntry> {
     return this.request('GET', `/configs/${encodeURIComponent(key)}`);
@@ -247,11 +296,34 @@ export class OpenSecureConfClient {
 
   /**
    * Update an existing configuration entry
+   * 
+   * @param key - Configuration key to update
+   * @param value - New configuration value (object, string, number, boolean, or array)
+   * @param options - Optional new category and environment
+   * 
+   * @example
+   * // Update value and environment
+   * await client.update('database', { host: 'db.example.com', port: 5432 },
+   *                     { environment: 'production' });
+   * 
+   * @example
+   * // Update only value
+   * await client.update('api_token', 'new-token-456');
+   * 
+   * @example
+   * // Change category and environment
+   * await client.update('setting', 100, 
+   *                     { category: 'config', environment: 'staging' });
    */
-  async update(key: string, value: Record<string, any>, category?: string): Promise<ConfigEntry> {
+  async update(
+    key: string, 
+    value: ConfigValue, 
+    options?: { category?: string; environment?: string }
+  ): Promise<ConfigEntry> {
     return this.request('PUT', `/configs/${encodeURIComponent(key)}`, {
       value,
-      category,
+      category: options?.category,
+      environment: options?.environment,
     });
   }
 
@@ -263,10 +335,40 @@ export class OpenSecureConfClient {
   }
 
   /**
-   * List all configurations with optional category filter
+   * List all configurations with optional filters
+   * 
+   * @param options - Optional category and environment filters
+   * 
+   * @example
+   * // List all configurations
+   * const all = await client.list();
+   * 
+   * @example
+   * // Filter by category
+   * const dbConfigs = await client.list({ category: 'database' });
+   * 
+   * @example
+   * // Filter by environment
+   * const prodConfigs = await client.list({ environment: 'production' });
+   * 
+   * @example
+   * // Filter by both
+   * const configs = await client.list({ 
+   *   category: 'database', 
+   *   environment: 'production' 
+   * });
    */
-  async list(category?: string): Promise<ConfigEntry[]> {
-    const endpoint = category ? `/configs?category=${encodeURIComponent(category)}` : '/configs';
+  async list(options?: { category?: string; environment?: string }): Promise<ConfigEntry[]> {
+    const params = new URLSearchParams();
+    if (options?.category) {
+      params.append('category', options.category);
+    }
+    if (options?.environment) {
+      params.append('environment', options.environment);
+    }
+
+    const queryString = params.toString();
+    const endpoint = queryString ? `/configs?${queryString}` : '/configs';
     return this.request('GET', endpoint);
   }
 
@@ -303,6 +405,7 @@ export class OpenSecureConfClient {
     }
 
     const response = await fetch(url, fetchOptions);
+
     if (!response.ok) {
       throw new OpenSecureConfError(
         response.status,
@@ -330,17 +433,84 @@ export class OpenSecureConfClient {
 
   /**
    * Count total configurations
+   * 
+   * @param options - Optional category and environment filters
+   * 
+   * @example
+   * const total = await client.count();
+   * const prodCount = await client.count({ environment: 'production' });
+   * const dbProdCount = await client.count({ 
+   *   category: 'database', 
+   *   environment: 'production' 
+   * });
    */
-  async count(category?: string): Promise<number> {
-    const configs = await this.list(category);
+  async count(options?: { category?: string; environment?: string }): Promise<number> {
+    const configs = await this.list(options);
     return configs.length;
   }
 
   /**
+   * Get list of all unique categories
+   * 
+   * @example
+   * const categories = await client.listCategories();
+   * console.log(categories); // ['database', 'api', 'settings']
+   */
+  async listCategories(): Promise<string[]> {
+    const configs = await this.list();
+    const categories = new Set<string>();
+
+    for (const config of configs) {
+      if (config.category) {
+        categories.add(config.category);
+      }
+    }
+
+    return Array.from(categories).sort();
+  }
+
+  /**
+   * Get list of all unique environments
+   * 
+   * @example
+   * const environments = await client.listEnvironments();
+   * console.log(environments); // ['development', 'production', 'staging']
+   */
+  async listEnvironments(): Promise<string[]> {
+    const configs = await this.list();
+    const environments = new Set<string>();
+
+    for (const config of configs) {
+      if (config.environment) {
+        environments.add(config.environment);
+      }
+    }
+
+    return Array.from(environments).sort();
+  }
+
+  /**
    * Bulk create configurations
+   * 
+   * @param configs - Array of configurations to create (supports mixed value types)
+   * @param ignoreErrors - If true, continue on errors and return partial results
+   * 
+   * @example
+   * const configs = [
+   *   { key: 'db_host', value: 'localhost', category: 'db', environment: 'prod' },
+   *   { key: 'db_port', value: 5432, category: 'db', environment: 'prod' },
+   *   { key: 'use_ssl', value: true, category: 'security', environment: 'prod' },
+   *   { key: 'api_token', value: 'secret-123', category: 'auth', environment: 'staging' }
+   * ];
+   * const results = await client.bulkCreate(configs);
    */
   async bulkCreate(
-    configs: Array<{ key: string; value: Record<string, any>; category?: string }>,
+    configs: Array<{ 
+      key: string; 
+      value: ConfigValue; 
+      category?: string;
+      environment?: string;
+    }>,
     ignoreErrors: boolean = false
   ): Promise<ConfigEntry[]> {
     const results: ConfigEntry[] = [];
@@ -348,7 +518,14 @@ export class OpenSecureConfClient {
 
     for (const config of configs) {
       try {
-        const result = await this.create(config.key, config.value, config.category);
+        const result = await this.create(
+          config.key, 
+          config.value, 
+          { 
+            category: config.category,
+            environment: config.environment 
+          }
+        );
         results.push(result);
       } catch (error) {
         errors.push({ key: config.key, error });

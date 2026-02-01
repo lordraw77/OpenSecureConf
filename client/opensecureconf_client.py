@@ -12,16 +12,17 @@ Enhanced Features:
 - Batch operations
 - Enhanced input validation
 - Health check utilities
+- Support for multiple value types (dict, str, int, bool, list)
+- Category and environment support
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import logging
 import time
 import requests
 from requests.adapters import HTTPAdapter
 from requests.exceptions import Timeout, RequestException
 from urllib3.util.retry import Retry
-
 
 # ============================================================================
 # EXCEPTIONS
@@ -30,22 +31,17 @@ from urllib3.util.retry import Retry
 class OpenSecureConfError(Exception):
     """Base exception for OpenSecureConf client errors."""
 
-
 class AuthenticationError(OpenSecureConfError):
     """Raised when authentication fails (invalid or missing user key)."""
-
 
 class ConfigurationNotFoundError(OpenSecureConfError):
     """Raised when a requested configuration key does not exist."""
 
-
 class ConfigurationExistsError(OpenSecureConfError):
     """Raised when attempting to create a configuration that already exists."""
 
-
 class ClusterError(OpenSecureConfError):
     """Raised when cluster operations fail."""
-
 
 # ============================================================================
 # CLIENT
@@ -73,9 +69,12 @@ class OpenSecureConfClient:
         ...     enable_retry=True,
         ...     log_level="INFO"
         ... )
-        >>> config = client.create("database", {"host": "localhost", "port": 5432})
-        >>> print(config["value"])
-        {'host': 'localhost', 'port': 5432}
+        >>> # Dict value with category and environment
+        >>> config = client.create("database", {"host": "localhost", "port": 5432}, 
+        ...                         category="config", environment="production")
+        >>> # String value
+        >>> config = client.create("api_token", "secret-token-123", 
+        ...                         category="auth", environment="staging")
     """
 
     def __init__(
@@ -171,12 +170,10 @@ class OpenSecureConfClient:
             "x-user-key": self.user_key,
             "Content-Type": "application/json"
         }
-
         if self.api_key:
             headers["X-API-Key"] = self.api_key
 
         self._session.headers.update(headers)
-
         self.logger.info(f"Client initialized for {self.base_url}")
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Any:
@@ -208,7 +205,6 @@ class OpenSecureConfClient:
         try:
             response = self._session.request(method, url, **kwargs)
             duration = time.time() - start_time
-
             self.logger.info(
                 f"{method} {endpoint} - Status: {response.status_code} - Duration: {duration:.3f}s"
             )
@@ -295,7 +291,7 @@ class OpenSecureConfClient:
         Example:
             >>> info = client.get_service_info()
             >>> print(info["version"])
-            2.1.0
+            2.2.0
         """
         return self._make_request("GET", "/")
 
@@ -350,18 +346,20 @@ class OpenSecureConfClient:
     # ========================================================================
 
     def create(
-        self, 
-        key: str, 
-        value: Dict[str, Any], 
-        category: Optional[str] = None
+        self,
+        key: str,
+        value: Union[Dict[str, Any], str, int, bool, list],
+        category: Optional[str] = None,
+        environment: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a new encrypted configuration entry.
 
         Args:
             key: Unique configuration key (1-255 characters)
-            value: Configuration data as dictionary (will be encrypted)
+            value: Configuration data (dict, string, int, bool, or list - will be encrypted)
             category: Optional category for grouping (max 100 characters)
+            environment: Optional environment identifier (max 100 characters)
 
         Returns:
             Dictionary containing the created configuration with fields:
@@ -369,29 +367,35 @@ class OpenSecureConfClient:
             - key: Configuration key
             - value: Configuration value (decrypted)
             - category: Configuration category (if set)
+            - environment: Environment identifier (if set)
 
         Raises:
             ConfigurationExistsError: If configuration key already exists
-            ValueError: If key or value is invalid
+            ValueError: If key is invalid
 
         Example:
-            >>> config = client.create(
-            ...     key="database",
-            ...     value={"host": "localhost", "port": 5432},
-            ...     category="production"
-            ... )
+            >>> # Dict value with category and environment
+            >>> config = client.create("database", {"host": "localhost", "port": 5432}, 
+            ...                         category="config", environment="production")
+            >>> # String value
+            >>> config = client.create("api_token", "secret-123", 
+            ...                         category="auth", environment="staging")
+            >>> # Integer value
+            >>> config = client.create("max_retries", 3, environment="production")
+            >>> # Boolean value
+            >>> config = client.create("debug", False, category="settings", environment="dev")
         """
         # Enhanced validation
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
         if len(key) > 255:
             raise ValueError("Key must be between 1 and 255 characters")
-        if not isinstance(value, dict):
-            raise ValueError("Value must be a dictionary")
         if category and len(category) > 100:
             raise ValueError("Category must be max 100 characters")
+        if environment and len(environment) > 100:
+            raise ValueError("Environment must be max 100 characters")
 
-        payload = {"key": key, "value": value, "category": category}
+        payload = {"key": key, "value": value, "category": category, "environment": environment}
         return self._make_request("POST", "/configs", json=payload)
 
     def read(self, key: str) -> Dict[str, Any]:
@@ -403,6 +407,7 @@ class OpenSecureConfClient:
 
         Returns:
             Dictionary containing the configuration with decrypted value
+            The value can be dict, str, int, bool, or list depending on what was stored
 
         Raises:
             ConfigurationNotFoundError: If configuration key does not exist
@@ -410,8 +415,8 @@ class OpenSecureConfClient:
 
         Example:
             >>> config = client.read("database")
-            >>> print(config["value"]["host"])
-            localhost
+            >>> print(config["value"])  # Could be any supported type
+            >>> print(config["environment"])  # e.g., "production"
         """
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
@@ -419,40 +424,43 @@ class OpenSecureConfClient:
         return self._make_request("GET", f"/configs/{key}")
 
     def update(
-        self, 
-        key: str, 
-        value: Dict[str, Any], 
-        category: Optional[str] = None
+        self,
+        key: str,
+        value: Union[Dict[str, Any], str, int, bool, list],
+        category: Optional[str] = None,
+        environment: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Update an existing configuration entry with new encrypted value.
 
         Args:
             key: Configuration key to update
-            value: New configuration data as dictionary (will be encrypted)
+            value: New configuration data (dict, string, int, bool, or list - will be encrypted)
             category: Optional new category
+            environment: Optional new environment
 
         Returns:
             Dictionary containing the updated configuration with decrypted value
 
         Raises:
             ConfigurationNotFoundError: If configuration key does not exist
-            ValueError: If parameters are invalid
+            ValueError: If key is invalid
 
         Example:
-            >>> config = client.update(
-            ...     key="database",
-            ...     value={"host": "db.example.com", "port": 5432}
-            ... )
+            >>> # Update with dict
+            >>> config = client.update("database", {"host": "db.example.com", "port": 5432},
+            ...                        environment="production")
+            >>> # Update with string and change environment
+            >>> config = client.update("api_token", "new-token-456", environment="staging")
         """
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
-        if not isinstance(value, dict):
-            raise ValueError("Value must be a dictionary")
         if category and len(category) > 100:
             raise ValueError("Category must be max 100 characters")
+        if environment and len(environment) > 100:
+            raise ValueError("Environment must be max 100 characters")
 
-        payload = {"value": value, "category": category}
+        payload = {"value": value, "category": category, "environment": environment}
         return self._make_request("PUT", f"/configs/{key}", json=payload)
 
     def delete(self, key: str) -> Dict[str, str]:
@@ -479,23 +487,35 @@ class OpenSecureConfClient:
 
         return self._make_request("DELETE", f"/configs/{key}")
 
-    def list_all(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_all(self, category: Optional[str] = None, environment: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        List all configurations with optional category filter.
+        List all configurations with optional category and environment filters.
         All values are automatically decrypted.
 
         Args:
             category: Optional filter by category
+            environment: Optional filter by environment
 
         Returns:
             List of configuration dictionaries with decrypted values
+            Each value can be dict, str, int, bool, or list
 
         Example:
-            >>> configs = client.list_all(category="production")
-            >>> for config in configs:
-            ...     print(f"{config['key']}: {config['value']}")
+            >>> # List all
+            >>> configs = client.list_all()
+            >>> # Filter by category
+            >>> prod_configs = client.list_all(category="production")
+            >>> # Filter by environment
+            >>> staging_configs = client.list_all(environment="staging")
+            >>> # Filter by both
+            >>> configs = client.list_all(category="database", environment="production")
         """
-        params = {"category": category} if category else {}
+        params = {}
+        if category:
+            params["category"] = category
+        if environment:
+            params["environment"] = environment
+
         return self._make_request("GET", "/configs", params=params)
 
     # ========================================================================
@@ -503,15 +523,17 @@ class OpenSecureConfClient:
     # ========================================================================
 
     def bulk_create(
-        self, 
-        configs: List[Dict[str, Any]], 
+        self,
+        configs: List[Dict[str, Any]],
         ignore_errors: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Create multiple configurations in batch.
 
         Args:
-            configs: List of configuration dictionaries with 'key', 'value', and optional 'category'
+            configs: List of configuration dictionaries with 'key', 'value', 
+                    and optional 'category' and 'environment'
+                    Value can be dict, str, int, bool, or list
             ignore_errors: If True, continue on errors and return partial results
 
         Returns:
@@ -523,8 +545,12 @@ class OpenSecureConfClient:
 
         Example:
             >>> configs = [
-            ...     {"key": "db1", "value": {"host": "localhost"}, "category": "prod"},
-            ...     {"key": "db2", "value": {"host": "remote"}, "category": "prod"}
+            ...     {"key": "db1", "value": {"host": "localhost"}, 
+            ...      "category": "db", "environment": "production"},
+            ...     {"key": "token", "value": "secret-123", 
+            ...      "category": "auth", "environment": "staging"},
+            ...     {"key": "retries", "value": 3, 
+            ...      "category": "config", "environment": "production"}
             ... ]
             >>> results = client.bulk_create(configs)
             >>> print(f"Created {len(results)} configurations")
@@ -545,7 +571,8 @@ class OpenSecureConfClient:
                 result = self.create(
                     key=config["key"],
                     value=config["value"],
-                    category=config.get("category")
+                    category=config.get("category"),
+                    environment=config.get("environment")
                 )
                 results.append(result)
                 self.logger.info(f"Bulk create: created '{config['key']}'")
@@ -577,7 +604,7 @@ class OpenSecureConfClient:
             List of configuration dictionaries
 
         Example:
-            >>> configs = client.bulk_read(["db1", "db2", "api"])
+            >>> configs = client.bulk_read(["db1", "token", "retries"])
             >>> print(f"Retrieved {len(configs)} configurations")
         """
         if not isinstance(keys, list):
@@ -604,8 +631,8 @@ class OpenSecureConfClient:
         return results
 
     def bulk_delete(
-        self, 
-        keys: List[str], 
+        self,
+        keys: List[str],
         ignore_errors: bool = False
     ) -> Dict[str, Any]:
         """
@@ -666,46 +693,48 @@ class OpenSecureConfClient:
             return False
 
     def get_or_default(
-        self, 
-        key: str, 
-        default: Dict[str, Any]
+        self,
+        key: str,
+        default: Union[Dict[str, Any], str, int, bool, list]
     ) -> Dict[str, Any]:
         """
         Get configuration value or return default if not found.
 
         Args:
             key: Configuration key to retrieve
-            default: Default value to return if key not found
+            default: Default value to return if key not found (any supported type)
 
         Returns:
-            Configuration dictionary or default value
+            Configuration dictionary or default value wrapped in dict format
 
         Example:
-            >>> config = client.get_or_default(
-            ...     "database", 
-            ...     {"host": "localhost", "port": 5432}
-            ... )
+            >>> # Dict default
+            >>> config = client.get_or_default("database", {"host": "localhost", "port": 5432})
+            >>> # String default
+            >>> config = client.get_or_default("token", "default-token")
         """
         try:
             return self.read(key)
         except ConfigurationNotFoundError:
-            return {"key": key, "value": default, "category": None}
+            return {"key": key, "value": default, "category": None, "environment": None}
 
-    def count(self, category: Optional[str] = None) -> int:
+    def count(self, category: Optional[str] = None, environment: Optional[str] = None) -> int:
         """
-        Count total configurations, optionally filtered by category.
+        Count total configurations, optionally filtered by category and/or environment.
 
         Args:
             category: Optional category filter
+            environment: Optional environment filter
 
         Returns:
             Number of configurations
 
         Example:
             >>> total = client.count()
-            >>> prod_count = client.count(category="production")
+            >>> prod_count = client.count(environment="production")
+            >>> db_prod_count = client.count(category="database", environment="production")
         """
-        configs = self.list_all(category=category)
+        configs = self.list_all(category=category, environment=environment)
         return len(configs)
 
     def list_categories(self) -> List[str]:
@@ -726,6 +755,26 @@ class OpenSecureConfClient:
             if cat:
                 categories.add(cat)
         return sorted(list(categories))
+
+    def list_environments(self) -> List[str]:
+        """
+        Get list of all unique environments.
+
+        Returns:
+            List of environment names
+
+        Example:
+            >>> environments = client.list_environments()
+            >>> print(f"Environments: {', '.join(environments)}")
+            Environments: production, staging, development
+        """
+        configs = self.list_all()
+        environments = set()
+        for config in configs:
+            env = config.get("environment")
+            if env:
+                environments.add(env)
+        return sorted(list(environments))
 
     # ========================================================================
     # SESSION MANAGEMENT

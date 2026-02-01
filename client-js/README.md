@@ -506,6 +506,6 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 **OpenSecureConf TypeScript Client** - Secure configuration management made simple.
 
-**Version**: 2.2.1  
+**Version**: 2.3.0  
 **Author**: lordraw77  
 **Support**: [GitHub Issues](https://github.com/lordraw77/OpenSecureConf/issues)
