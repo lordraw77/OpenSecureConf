@@ -45,6 +45,7 @@ from core.metrics import (
 from core.config import OSC_CLUSTER_ENABLED
 from utils.helpers import update_config_count_metric
 from cluster_manager import ClusterMode
+import traceback
 
 
 # Import cluster manager (will be None if clustering disabled)
@@ -110,12 +111,14 @@ async def create_configuration(
         return result
 
     except ValueError as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="validation_error").inc()
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     except Exception as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="internal_error").inc()
@@ -186,12 +189,14 @@ async def read_configuration(
             raise ValueError(f"Configuration with key '{key}' not found") from ve
 
     except ValueError as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='read', status='not_found').inc()
         config_read_operations.labels(status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='read', status='error').inc()
         config_read_operations.labels(status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -250,12 +255,14 @@ async def update_configuration(
         return result
 
     except ValueError as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='update', status='not_found').inc()
         config_write_operations.labels(operation='update', status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='update', status='error').inc()
         config_write_operations.labels(operation='update', status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -306,12 +313,14 @@ async def delete_configuration(
         return {"message": f"Configuration '{key}' deleted successfully"}
 
     except ValueError as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='delete', status='not_found').inc()
         config_write_operations.labels(operation='delete', status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
+        traceback.print_exc() 
         config_operations_total.labels(operation='delete', status='error').inc()
         config_write_operations.labels(operation='delete', status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -376,6 +385,7 @@ async def list_configurations(
         return result
 
     except Exception as e:
+        traceback.print_exc()   
         config_operations_total.labels(operation='list', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="internal_error").inc()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e

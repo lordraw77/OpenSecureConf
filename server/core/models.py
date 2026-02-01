@@ -43,7 +43,7 @@ Usage:
     response = ConfigResponse(**db_record)
 """
 
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 from pydantic import BaseModel, Field
 
 
@@ -104,9 +104,9 @@ class ConfigCreate(BaseModel):
         description="Unique configuration key identifier"
     )
 
-    value: dict = Field(
-        ...,  # Required field
-        description="Configuration value as JSON object (will be encrypted)"
+    value: Union[dict, str, int, bool, list] = Field(
+        ...,
+        description="Configuration value (dict, string, int, bool, or list - will be encrypted)"
     )
 
     category: Optional[str] = Field(
@@ -166,9 +166,9 @@ class ConfigUpdate(BaseModel):
             "environment": "production"
         }
     """
-    value: dict = Field(
-        ...,  # Required field
-        description="New configuration value as JSON object (will be encrypted)"
+    value: Union[dict, str, int, bool, list] = Field(
+        ...,
+        description="New configuration value (dict, string, int, bool, or list - will be encrypted)"
     )
 
     category: Optional[str] = Field(
@@ -236,8 +236,9 @@ class ConfigResponse(BaseModel):
     key: str = Field(description="Configuration key")
     category: Optional[str] = Field(description="Category label")
     environment: Optional[str] = Field(description="Environment identifier")
-    value: dict = Field(description="Decrypted configuration value")
-
+    value: Union[dict, str, int, bool, list] = Field(
+        description="Decrypted configuration value"
+    )
 
 class ConfigResponseFull(BaseModel):
     """
@@ -299,7 +300,9 @@ class ConfigResponseFull(BaseModel):
     key: str = Field(description="Configuration key")
     category: Optional[str] = Field(description="Category label")
     environment: Optional[str] = Field(description="Environment identifier")
-    value: dict = Field(description="Decrypted configuration value")
+    value: Union[dict, str, int, bool, list] = Field(
+        description="Decrypted configuration value"
+    )
     created_at: str = Field(description="Creation timestamp (ISO 8601 UTC)")
     updated_at: str = Field(description="Last update timestamp (ISO 8601 UTC)")
 

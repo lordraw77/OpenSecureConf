@@ -71,7 +71,8 @@ async def root():
         "name": APP_TITLE,
         "version": APP_VERSION,
         "description": APP_DESCRIPTION,
-        "status": "operational"
+        "status": "operational",
+        "service": "OpenSecureConf API"
     }
 
     # Add cluster information if clustering is enabled
