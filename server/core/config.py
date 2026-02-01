@@ -208,7 +208,7 @@ prometheus_multiproc_dir = os.getenv("prometheus_multiproc_dir", "prometheus_mul
 # Application version - updated with each release
 # Used in API responses and health checks
 # Follows semantic versioning: MAJOR.MINOR.PATCH
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.1"
 
 # Application title - displayed in API documentation
 APP_TITLE = "OpenSecureConf API"
