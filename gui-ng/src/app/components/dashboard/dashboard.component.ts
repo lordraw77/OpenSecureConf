@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
-import { SkeletonModule } from 'primeng/skeleton';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
 
 interface ServiceInfo {
@@ -16,7 +15,7 @@ interface ServiceInfo {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, SkeletonModule],
+  imports: [CommonModule, CardModule, TableModule, TagModule],
   template: `
     <div class="dashboard">
       <div class="page-header">
@@ -189,14 +188,14 @@ interface ServiceInfo {
 
     .page-header {
       margin-bottom: 2rem;
-      background: white;
+      background: var(--card-bg);
       padding: 2rem;
       border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 20px var(--shadow-sm);
     }
 
     .page-header h1 {
-      color: #495057;
+      color: var(--text-primary);
       margin: 0 0 0.5rem 0;
       font-size: 2rem;
       display: flex;
@@ -209,16 +208,16 @@ interface ServiceInfo {
     }
 
     .page-header p {
-      color: #6c757d;
+      color: var(--text-secondary);
       margin: 0;
       font-size: 1.1rem;
     }
 
     .stat-card {
-      background: white;
+      background: var(--card-bg);
       padding: 2rem;
       border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 20px var(--shadow-sm);
       display: flex;
       align-items: center;
       gap: 1.5rem;
@@ -228,7 +227,7 @@ interface ServiceInfo {
 
     .stat-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 8px 30px var(--shadow-md);
     }
 
     .stat-card-primary {
@@ -282,13 +281,13 @@ interface ServiceInfo {
     .stat-value {
       font-size: 2.5rem;
       font-weight: 700;
-      color: #495057;
+      color: var(--text-primary);
       line-height: 1;
       margin-bottom: 0.5rem;
     }
 
     .stat-label {
-      color: #6c757d;
+      color: var(--text-secondary);
       font-size: 0.95rem;
       font-weight: 500;
     }
@@ -312,13 +311,13 @@ interface ServiceInfo {
       align-items: flex-start;
       gap: 1rem;
       padding: 1.5rem;
-      background: #f8f9fa;
+      background: var(--bg-secondary);
       border-radius: 12px;
       transition: all 0.2s;
     }
 
     .info-item:hover {
-      background: #e9ecef;
+      background: var(--hover-bg);
       transform: translateX(4px);
     }
 
@@ -329,14 +328,14 @@ interface ServiceInfo {
     }
 
     .info-label {
-      color: #6c757d;
+      color: var(--text-secondary);
       font-size: 0.875rem;
       font-weight: 500;
       margin-bottom: 0.25rem;
     }
 
     .info-value {
-      color: #495057;
+      color: var(--text-primary);
       font-size: 1.25rem;
       font-weight: 600;
     }

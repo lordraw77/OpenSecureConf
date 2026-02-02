@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensecureconf-client"
-version = "2.3.1"
+version = "2.3.2"
 description = "Python client library for OpenSecureConf encrypted configuration management API with clustering support"
 readme = "README.md"  # Updated to use the complete README
 requires-python = ">=3.8"

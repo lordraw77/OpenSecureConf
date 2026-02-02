@@ -1,15 +1,15 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
-import { MenubarModule } from 'primeng/menubar';
-import { MenuItem } from 'primeng/api';
 import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
 import { OpenSecureConfService } from './services/opensecureconf.service';
+import { ThemeService } from './services/theme.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, MenubarModule, TagModule],
+  imports: [CommonModule, RouterOutlet, RouterLink, RouterLinkActive, TagModule, TooltipModule],
   template: `
     <div class="app-container">
       <div class="navbar">
@@ -34,7 +34,18 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
             </a>
           </div>
           
-          <div class="status-badge">
+          <div class="navbar-actions">
+            <div 
+              class="theme-switch" 
+              [class.active]="isDarkMode"
+              (click)="toggleTheme()"
+              pTooltip="{{ isDarkMode ? 'Modalità chiara' : 'Modalità scura' }}"
+              tooltipPosition="bottom">
+              <div class="theme-switch-slider">
+                <i [class]="isDarkMode ? 'pi pi-moon' : 'pi pi-sun'"></i>
+              </div>
+            </div>
+            
             <p-tag 
               [value]="connectionStatus ? 'Connesso' : 'Disconnesso'" 
               [severity]="connectionStatus ? 'success' : 'danger'"
@@ -52,15 +63,16 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
   styles: [`
     .app-container {
       min-height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, var(--primary-gradient-start) 0%, var(--primary-gradient-end) 100%);
     }
 
     .navbar {
-      background: white;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      background: var(--card-bg);
+      box-shadow: 0 4px 20px var(--shadow-sm);
       position: sticky;
       top: 0;
       z-index: 1000;
+      transition: background-color 0.3s;
     }
 
     .navbar-content {
@@ -90,6 +102,8 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
     .nav-links {
       display: flex;
       gap: 0.5rem;
+      flex: 1;
+      justify-content: center;
     }
 
     .nav-link {
@@ -99,13 +113,13 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
       padding: 0.75rem 1.5rem;
       border-radius: 10px;
       text-decoration: none;
-      color: #495057;
+      color: var(--text-primary);
       font-weight: 500;
       transition: all 0.2s;
     }
 
     .nav-link:hover {
-      background: #f1f3f5;
+      background: var(--hover-bg);
       color: #667eea;
     }
 
@@ -119,9 +133,51 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
       font-size: 1.25rem;
     }
 
-    .status-badge {
+    .navbar-actions {
       display: flex;
       align-items: center;
+      gap: 1rem;
+    }
+
+    .theme-switch {
+      position: relative;
+      width: 60px;
+      height: 30px;
+      background: var(--bg-tertiary);
+      border-radius: 30px;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 2px solid var(--border-color);
+    }
+
+    .theme-switch:hover {
+      transform: scale(1.05);
+    }
+
+    .theme-switch.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .theme-switch-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: #667eea;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .theme-switch.active .theme-switch-slider {
+      transform: translateX(30px);
+      color: white;
     }
 
     .content {
@@ -138,11 +194,12 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
 
     @media (max-width: 768px) {
       .navbar-content {
-        flex-direction: column;
+        flex-wrap: wrap;
         gap: 1rem;
       }
 
       .nav-links {
+        order: 3;
         width: 100%;
         justify-content: center;
       }
@@ -150,17 +207,33 @@ import { OpenSecureConfService } from './services/opensecureconf.service';
       .nav-link span {
         display: none;
       }
+
+      .navbar-actions {
+        order: 2;
+      }
     }
   `]
 })
 export class AppComponent implements OnInit {
   connectionStatus = false;
+  isDarkMode = false;
 
-  constructor(private oscService: OpenSecureConfService) {}
+  constructor(
+    private oscService: OpenSecureConfService,
+    private themeService: ThemeService
+  ) {}
 
   ngOnInit() {
     this.oscService.getConnectionStatus().subscribe(status => {
       this.connectionStatus = status;
     });
+
+    this.themeService.darkMode$.subscribe(isDark => {
+      this.isDarkMode = isDark;
+    });
+  }
+
+  toggleTheme() {
+    this.themeService.toggleTheme();
   }
 }
