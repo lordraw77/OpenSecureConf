@@ -20,9 +20,10 @@ services:
       - OSC_LOG_LEVEL=INFO
       - OSC_LOG_FORMAT=console
       - prometheus_multiproc_dir=/app/prometheus_multiproc
+      - CORS_ORIGINS=http://192.168.0.215:9080,http://localhost:9080
     volumes:
       # Persist database and encryption salt
-      - opensecureconf-data:/app/data
+      - ./data:/app/data
 
     # Resource limits (adjust based on your needs)
     deploy:
@@ -44,10 +45,6 @@ services:
     # Network configuration
     networks:
       - opensecureconf-network
-
-volumes:
-  opensecureconf-data:
-    driver: local
 
 networks:
   opensecureconf-network:

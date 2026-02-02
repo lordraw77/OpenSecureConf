@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  opensecureconf-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      no_cache: true
+    container_name: opensecureconf-admin
+    ports:
+      - "9080:80"
+    environment:
+      - OSC_BASE_URL=${OSC_BASE_URL:-http://localhost:9000}
+      - OSC_USER_KEY=${OSC_USER_KEY:-my-secret-key-12345678}
+      - OSC_API_KEY=${OSC_API_KEY:-cluster-secret-key-123}
+    restart: unless-stopped
+    networks:
+      - opensecureconf-network
+
+networks:
+  opensecureconf-network:
+    driver: bridge

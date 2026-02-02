@@ -29,6 +29,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request
 from core.metrics import cleanup_multiprocess_metrics
+from fastapi.middleware.cors import CORSMiddleware
 
 from cluster_manager import ClusterManager, ClusterMode
 
@@ -138,6 +139,28 @@ app = FastAPI(
 
 
 # ========== MIDDLEWARE ==========
+
+# Configura origini permesse
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+
+# Aggiungi CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,  # Leggi da variabile d'ambiente
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-User-Key",
+        "X-API-Key",
+        "Accept",
+        "Origin",
+        "X-Requested-With"
+    ],
+    expose_headers=["Content-Length", "Content-Type"],
+    max_age=3600,  # Cache preflight per 1 ora
+)
 
 
 @app.middleware("http")

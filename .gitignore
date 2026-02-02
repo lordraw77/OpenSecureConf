@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/
 lib64/
 parts/
 sdist/
@@ -226,3 +226,20 @@ client-js/*.log
 client-js/npm-debug.log*
 client-js/yarn-debug.log*
 client-js/yarn-error.log*
+
+
+# Node.js / JavaScript Client
+gui-ng/node_modules/
+gui-ng/dist/
+gui-ng/coverage/
+gui-ng/*.tgz
+gui-ng/.eslintcache
+gui-ng/package-lock.json
+gui-ng/yarn.lock
+gui-ng/pnpm-lock.yaml
+
+# Logs
+gui-ng/*.log
+gui-ng/npm-debug.log*
+gui-ng/yarn-debug.log*
+gui-ng/yarn-error.log*
