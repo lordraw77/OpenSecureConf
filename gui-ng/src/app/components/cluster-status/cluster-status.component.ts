@@ -1,110 +1,114 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CardModule } from 'primeng/card';
+import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ButtonModule } from 'primeng/button';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
-import { ClusterStatus } from '../../models/config.model';
-import { interval, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-cluster-status',
   standalone: true,
-  imports: [CommonModule, CardModule, TagModule, ButtonModule],
+  imports: [CommonModule, CardModule, TableModule, TagModule, ButtonModule],
   template: `
     <div class="cluster-status">
-      <div class="header-section">
-        <h1>Stato Cluster</h1>
-        <p-button 
-          label="Aggiorna" 
-          icon="pi pi-refresh" 
-          (onClick)="loadClusterStatus()"
-          [loading]="loading">
-        </p-button>
+      <div class="page-header">
+        <div class="header-content">
+          <div>
+            <h1>
+              <i class="pi pi-server"></i>
+              Cluster Status
+            </h1>
+            <p>Monitora lo stato del cluster OpenSecureConf</p>
+          </div>
+          <p-button 
+            label="Aggiorna" 
+            icon="pi pi-refresh" 
+            (onClick)="loadClusterStatus()"
+            [loading]="loading">
+          </p-button>
+        </div>
       </div>
 
       <div class="grid">
-        <div class="col-12 lg:col-6">
-          <p-card header="Informazioni Cluster">
-            <div class="status-container" *ngIf="clusterStatus">
-              <div class="status-item">
-                <strong>Stato:</strong>
-                <p-tag 
-                  [value]="clusterStatus.enabled ? 'Abilitato' : 'Disabilitato'" 
-                  [severity]="clusterStatus.enabled ? 'success' : 'warning'">
-                </p-tag>
-              </div>
-
-              <div class="status-item" *ngIf="clusterStatus.mode">
-                <strong>Modalità:</strong>
-                <span>{{ clusterStatus.mode }}</span>
-              </div>
-
-              <div class="status-item" *ngIf="clusterStatus.node_id">
-                <strong>Node ID:</strong>
-                <code>{{ clusterStatus.node_id }}</code>
-              </div>
-
-              <div class="status-item" *ngIf="clusterStatus.total_nodes">
-                <strong>Nodi Totali:</strong>
-                <span>{{ clusterStatus.total_nodes }}</span>
-              </div>
-
-              <div class="status-item" *ngIf="clusterStatus.healthy_nodes !== undefined">
-                <strong>Nodi Sani:</strong>
-                <span>{{ clusterStatus.healthy_nodes }} / {{ clusterStatus.total_nodes }}</span>
-              </div>
-            </div>
-
-            <div *ngIf="!clusterStatus && !loading" class="empty-state">
-              <i class="pi pi-info-circle"></i>
-              <p>Impossibile recuperare lo stato del cluster</p>
-            </div>
-          </p-card>
-        </div>
-
-        <div class="col-12 lg:col-6">
-          <p-card header="Health Check">
-            <div class="status-container" *ngIf="healthStatus">
-              <div class="status-item">
-                <strong>Stato:</strong>
-                <p-tag 
-                  [value]="healthStatus.status" 
-                  [severity]="healthStatus.status === 'healthy' ? 'success' : 'danger'">
-                </p-tag>
-              </div>
-
-              <div class="status-item" *ngIf="healthStatus.node_id">
-                <strong>Node ID:</strong>
-                <code>{{ healthStatus.node_id }}</code>
-              </div>
-
-              <div class="status-item">
-                <strong>Ultimo aggiornamento:</strong>
-                <span>{{ lastUpdate | date: 'dd/MM/yyyy HH:mm:ss' }}</span>
-              </div>
-            </div>
-
-            <div *ngIf="!healthStatus && !loading" class="empty-state">
-              <i class="pi pi-info-circle"></i>
-              <p>Health check non disponibile</p>
-            </div>
-          </p-card>
-        </div>
-      </div>
-
-      <div class="grid mt-4" *ngIf="metricsAvailable">
         <div class="col-12">
-          <p-card header="Metriche Prometheus">
-            <div class="metrics-actions">
-              <p-button 
-                label="Visualizza Metriche" 
-                icon="pi pi-chart-line" 
-                (onClick)="loadMetrics()">
-              </p-button>
+          <p-card>
+            <ng-template pTemplate="header">
+              <div class="card-header-custom">
+                <i class="pi pi-heart-fill"></i>
+                Health Check
+              </div>
+            </ng-template>
+            <div class="health-check" *ngIf="healthCheck">
+              <div class="health-item">
+                <span class="health-label">Stato:</span>
+                <p-tag 
+                  [value]="healthCheck.status" 
+                  [severity]="healthCheck.status === 'healthy' ? 'success' : 'danger'"
+                  [rounded]="true">
+                </p-tag>
+              </div>
+              <div class="health-item">
+                <span class="health-label">Node ID:</span>
+                <span class="health-value">{{ healthCheck.node_id }}</span>
+              </div>
+              <div class="health-item" *ngIf="healthCheck.timestamp">
+                <span class="health-label">Ultimo aggiornamento:</span>
+                <span class="health-value">{{ formatDate(healthCheck.timestamp) }}</span>
+              </div>
             </div>
+          </p-card>
+        </div>
 
-            <pre class="metrics-display" *ngIf="metrics">{{ metrics }}</pre>
+        <div class="col-12" *ngIf="clusterStatus">
+          <p-card>
+            <ng-template pTemplate="header">
+              <div class="card-header-custom">
+                <i class="pi pi-sitemap"></i>
+                Nodi del Cluster
+              </div>
+            </ng-template>
+            <p-table [value]="clusterStatus.nodes" [tableStyle]="{ 'min-width': '100%' }">
+              <ng-template pTemplate="header">
+                <tr>
+                  <th>Node ID</th>
+                  <th>Stato</th>
+                  <th>Host</th>
+                  <th>Porta</th>
+                  <th>Ultimo Heartbeat</th>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="body" let-node>
+                <tr>
+                  <td>
+                    <span class="node-id">{{ node.node_id }}</span>
+                  </td>
+                  <td>
+                    <p-tag 
+                      [value]="node.status" 
+                      [severity]="getNodeSeverity(node.status)"
+                      [rounded]="true">
+                    </p-tag>
+                  </td>
+                  <td>
+                    <span class="node-value">{{ node.host }}</span>
+                  </td>
+                  <td>
+                    <span class="node-value">{{ node.port }}</span>
+                  </td>
+                  <td>
+                    <span class="node-value">{{ formatDate(node.last_heartbeat) }}</span>
+                  </td>
+                </tr>
+              </ng-template>
+              <ng-template pTemplate="emptymessage">
+                <tr>
+                  <td colspan="5" class="text-center">
+                    Nessun nodo trovato
+                  </td>
+                </tr>
+              </ng-template>
+            </p-table>
           </p-card>
         </div>
       </div>
@@ -112,139 +116,161 @@ import { interval, Subscription } from 'rxjs';
   `,
   styles: [`
     .cluster-status {
-      animation: fadeIn 0.3s;
+      animation: fadeInUp 0.5s ease-out;
     }
 
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
+    .page-header {
+      margin-bottom: 2rem;
+      background: var(--card-bg);
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px var(--shadow-sm);
     }
 
-    .header-section {
+    .header-content {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 2rem;
-    }
-
-    h1 {
-      color: #495057;
-      margin: 0;
-    }
-
-    .status-container {
-      display: flex;
-      flex-direction: column;
-      gap: 1.5rem;
-    }
-
-    .status-item {
-      display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: 1rem;
     }
 
-    .status-item strong {
-      min-width: 150px;
-      color: #495057;
+    .page-header h1 {
+      color: var(--text-primary);
+      margin: 0 0 0.5rem 0;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
     }
 
-    .status-item code {
-      background-color: #f8f9fa;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-family: monospace;
+    .page-header h1 i {
+      color: #667eea;
     }
 
-    .empty-state {
+    .page-header p {
+      color: var(--text-secondary);
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .card-header-custom {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .health-check {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 2rem;
+    }
+
+    .health-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 1.5rem;
+      background: var(--bg-secondary);
+      border-radius: 12px;
+    }
+
+    .health-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .health-value {
+      color: var(--text-primary);
+      font-size: 1.25rem;
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+    }
+
+    .node-id {
+      color: var(--text-primary);
+      font-family: 'Courier New', monospace;
+      font-weight: 600;
+      background: var(--bg-secondary);
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      display: inline-block;
+    }
+
+    .node-value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .text-center {
       text-align: center;
       padding: 2rem;
-      color: #6c757d;
+      color: var(--text-secondary);
     }
 
-    .empty-state i {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-      display: block;
-    }
-
-    .metrics-actions {
-      margin-bottom: 1rem;
-    }
-
-    .metrics-display {
-      background-color: #f8f9fa;
-      border: 1px solid #dee2e6;
-      border-radius: 4px;
-      padding: 1rem;
-      font-family: monospace;
-      font-size: 0.875rem;
-      max-height: 400px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-wrap: break-word;
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   `]
 })
-export class ClusterStatusComponent implements OnInit, OnDestroy {
-  clusterStatus: ClusterStatus | null = null;
-  healthStatus: { status: string; node_id: string } | null = null;
-  metrics: string | null = null;
-  metricsAvailable = true;
+export class ClusterStatusComponent implements OnInit {
+  clusterStatus: any = null;
+  healthCheck: any = null;
   loading = false;
-  lastUpdate = new Date();
-  private refreshSubscription?: Subscription;
 
   constructor(private oscService: OpenSecureConfService) {}
 
   ngOnInit() {
     this.loadClusterStatus();
-    this.loadHealthStatus();
-    
-    this.refreshSubscription = interval(30000).subscribe(() => {
-      this.loadHealthStatus();
-    });
-  }
-
-  ngOnDestroy() {
-    this.refreshSubscription?.unsubscribe();
   }
 
   loadClusterStatus() {
     this.loading = true;
+
+    this.oscService.healthCheck().subscribe({
+      next: (health) => {
+        this.healthCheck = health;
+        this.healthCheck.timestamp = new Date().toISOString();
+      },
+      error: (error) => {
+        console.error('Health check failed:', error);
+      }
+    });
+
     this.oscService.getClusterStatus().subscribe({
       next: (status) => {
         this.clusterStatus = status;
         this.loading = false;
       },
       error: (error) => {
-        console.error('Error loading cluster status:', error);
+        console.error('Cluster status failed:', error);
         this.loading = false;
       }
     });
   }
 
-  loadHealthStatus() {
-    this.oscService.healthCheck().subscribe({
-      next: (status) => {
-        this.healthStatus = status;
-        this.lastUpdate = new Date();
-      },
-      error: (error) => {
-        console.error('Error loading health status:', error);
-      }
-    });
+  getNodeSeverity(status: string): 'success' | 'warning' | 'danger' | 'info' {
+    if (status === 'active' || status === 'healthy') return 'success';
+    if (status === 'inactive' || status === 'unhealthy') return 'danger';
+    if (status === 'pending') return 'warning';
+    return 'info';
   }
 
-  loadMetrics() {
-    this.oscService.getMetrics().subscribe({
-      next: (metrics) => {
-        this.metrics = metrics;
-      },
-      error: (error) => {
-        console.error('Error loading metrics:', error);
-        this.metricsAvailable = false;
-      }
-    });
+  formatDate(dateString: string): string {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('it-IT');
   }
 }

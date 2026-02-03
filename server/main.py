@@ -27,8 +27,12 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request,status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from core.metrics import cleanup_multiprocess_metrics
+from core.metrics import api_errors_total
+
 from fastapi.middleware.cors import CORSMiddleware
 
 from cluster_manager import ClusterManager, ClusterMode
@@ -48,6 +52,9 @@ from core.metrics import (
     http_requests_total, http_request_duration_seconds,
     cluster_nodes_total
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Import all routers
 from routes import main_routes, config_routes, cluster_routes, stats_routes, backup_routes
@@ -202,6 +209,58 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handler personalizzato per errori di validazione 422.
+    Logga i dettagli dell'errore prima di restituire la risposta.
+    """
+    # Estrai informazioni dalla richiesta
+    url_path = request.url.path
+    method = request.method
+    
+    # Estrai i dettagli degli errori di validazione
+    errors = exc.errors()
+    
+    # Prova a ottenere la key dal body (se presente)
+    try:
+        body = await request.body()
+        body_json = body.decode('utf-8') if body else '{}'
+        # Cerca di estrarre la key se esiste nel JSON
+        import json
+        try:
+            body_dict = json.loads(body_json)
+            key = body_dict.get('key', 'N/A')
+        except:
+            key = 'N/A'
+    except:
+        key = 'N/A'
+        body_json = 'N/A'
+    
+    # Formatta gli errori per il log
+    error_details = []
+    for error in errors:
+        field = ' -> '.join(str(loc) for loc in error['loc'])
+        message = error['msg']
+        error_type = error['type']
+        error_details.append(f"{field}: {message} ({error_type})")
+    
+    error_summary = ' | '.join(error_details)
+    
+    # Log dettagliato dell'errore 422
+    logger.error(
+        f"{method} {url_path} - VALIDATION ERROR (422) - "
+        f"Key: '{key}' | Errors: {error_summary}"
+    )
+    
+    # Incrementa metric per errori di validazione
+    api_errors_total.labels(endpoint=url_path, error_type="validation_error").inc()
+    
+    # Restituisci la risposta standard di FastAPI
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": errors}
+    )
 
 # ========== REGISTER ROUTERS ==========
 

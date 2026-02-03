@@ -46,6 +46,14 @@ from core.config import OSC_CLUSTER_ENABLED
 from utils.helpers import update_config_count_metric
 from cluster_manager import ClusterMode
 import traceback
+import logging
+
+# Configura il logger
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 
 # Import cluster manager (will be None if clustering disabled)
@@ -90,6 +98,10 @@ async def create_configuration(
             category=config.category,
             environment=config.environment
         )
+        logger.debug(
+            f"POST /configs - SUCCESS - Key created: '{config.key}' | "
+            f"Category: {config.category} | Environment: {config.environment}"
+        )
 
         # Update metrics
         config_operations_total.labels(operation='create', status='success').inc()
@@ -111,6 +123,10 @@ async def create_configuration(
         return result
 
     except ValueError as e:
+        logger.debug(
+            f"POST /configs - VALIDATION ERROR - Key: '{config.key}' | "
+            f"Error: {str(e)}"
+        )
         traceback.print_exc() 
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()
@@ -118,6 +134,11 @@ async def create_configuration(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     except Exception as e:
+        logger.debug(
+            f"POST /configs - INTERNAL ERROR - Key: '{config.key}' | "
+            f"Error: {str(e)}", 
+            exc_info=True  # Include il traceback completo
+        )
         traceback.print_exc() 
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()

@@ -134,6 +134,7 @@ export class OpenSecureConfClient {
     const params = new URLSearchParams();
     if (options?.category) params.append('category', options.category);
     if (options?.environment) params.append('environment', options.environment);
+    params.append('mode', 'full');
     const queryString = params.toString();
     return this.request('GET', queryString ? `/configs?${queryString}` : '/configs');
   }

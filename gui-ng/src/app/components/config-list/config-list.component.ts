@@ -14,6 +14,12 @@ import { ConfirmationService, MessageService } from 'primeng/api';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
 import { ConfigEntry } from 'opensecureconf-client';
 
+// Estendi ConfigEntry per includere date
+interface ExtendedConfigEntry extends ConfigEntry {
+  created_at?: string;
+  updated_at?: string;
+}
+
 @Component({
   selector: 'app-config-list',
   standalone: true,
@@ -36,128 +42,171 @@ import { ConfigEntry } from 'opensecureconf-client';
       <p-toast></p-toast>
       <p-confirmDialog></p-confirmDialog>
 
-      <div class="header-section">
-        <h1>Gestione Configurazioni</h1>
-        <p-button label="Nuova Configurazione" icon="pi pi-plus" (onClick)="showCreateDialog()"></p-button>
+      <div class="page-header">
+        <div class="header-content">
+          <div>
+            <h1>
+              <i class="pi pi-cog"></i>
+              Gestione Configurazioni
+            </h1>
+            <p>Gestisci tutte le configurazioni del sistema</p>
+          </div>
+          <p-button 
+            label="Nuova Configurazione" 
+            icon="pi pi-plus" 
+            (onClick)="showCreateDialog()"
+            styleClass="p-button-success">
+          </p-button>
+        </div>
       </div>
 
-      <p-table 
-        #dt
-        [value]="configs" 
-        [paginator]="true" 
-        [rows]="10"
-        [rowsPerPageOptions]="[10, 25, 50]"
-        [loading]="loading"
-        [globalFilterFields]="['key', 'category', 'environment']"
-        [tableStyle]="{ 'min-width': '100%' }"
-        styleClass="p-datatable-striped">
-        
-        <ng-template pTemplate="caption">
-          <div class="table-header">
-            <span class="p-input-icon-left">
-              <i class="pi pi-search"></i>
-              <input 
-                pInputText 
-                type="text" 
-                (input)="dt.filterGlobal($any($event.target).value, 'contains')" 
-                placeholder="Cerca..." />
-            </span>
-            
-            <div class="filter-section">
-              <p-dropdown 
-                [options]="categoryOptions" 
-                [(ngModel)]="selectedCategory"
-                (onChange)="loadConfigs()"
-                placeholder="Filtra per Categoria"
-                [showClear]="true"
-                styleClass="mr-2">
-              </p-dropdown>
+      <div class="table-card">
+        <p-table 
+          #dt
+          [value]="configs" 
+          [paginator]="true" 
+          [rows]="10"
+          [loading]="loading"
+          [globalFilterFields]="['key', 'category', 'environment']"
+          [tableStyle]="{ 'min-width': '100%' }"
+          styleClass="p-datatable-striped">
+          
+          <ng-template pTemplate="caption">
+            <div class="table-header">
+              <span class="p-input-icon-left">
+                <i class="pi pi-search"></i>
+                <input 
+                  pInputText 
+                  type="text" 
+                  (input)="dt.filterGlobal($any($event.target).value, 'contains')" 
+                  placeholder="Cerca..." />
+              </span>
               
-              <p-dropdown 
-                [options]="environmentOptions" 
-                [(ngModel)]="selectedEnvironment"
-                (onChange)="loadConfigs()"
-                placeholder="Filtra per Ambiente"
-                [showClear]="true">
-              </p-dropdown>
-            </div>
-          </div>
-        </ng-template>
-
-        <ng-template pTemplate="header">
-          <tr>
-            <th pSortableColumn="key">
-              Chiave <p-sortIcon field="key"></p-sortIcon>
-            </th>
-            <th>Valore</th>
-            <th pSortableColumn="category">
-              Categoria <p-sortIcon field="category"></p-sortIcon>
-            </th>
-            <th pSortableColumn="environment">
-              Ambiente <p-sortIcon field="environment"></p-sortIcon>
-            </th>
-            <th class="actions-column">Azioni</th>
-          </tr>
-        </ng-template>
-
-        <ng-template pTemplate="body" let-config>
-          <tr>
-            <td>
-              <strong>{{ config.key }}</strong>
-            </td>
-            <td>
-              <div class="value-preview">
-                {{ formatValue(config.value) }}
+              <div class="filter-section">
+                <p-dropdown 
+                  [options]="categoryOptions" 
+                  [(ngModel)]="selectedCategory"
+                  (onChange)="loadConfigs()"
+                  placeholder="Filtra per Categoria"
+                  [showClear]="true"
+                  styleClass="mr-2">
+                </p-dropdown>
+                
+                <p-dropdown 
+                  [options]="environmentOptions" 
+                  [(ngModel)]="selectedEnvironment"
+                  (onChange)="loadConfigs()"
+                  placeholder="Filtra per Ambiente"
+                  [showClear]="true">
+                </p-dropdown>
               </div>
-            </td>
-            <td>
-              <p-tag *ngIf="config.category" [value]="config.category"></p-tag>
-              <span *ngIf="!config.category" class="text-muted">-</span>
-            </td>
-            <td>
-              <p-tag *ngIf="config.environment" 
-                     [value]="config.environment"
-                     [severity]="getEnvironmentSeverity(config.environment)">
-              </p-tag>
-              <span *ngIf="!config.environment" class="text-muted">-</span>
-            </td>
-            <td class="actions-column">
-              <p-button 
-                icon="pi pi-eye" 
-                [rounded]="true" 
-                [text]="true" 
-                severity="info"
-                (onClick)="viewConfig(config)"
-                pTooltip="Visualizza">
-              </p-button>
-              <p-button 
-                icon="pi pi-pencil" 
-                [rounded]="true" 
-                [text]="true" 
-                severity="success"
-                (onClick)="editConfig(config)"
-                pTooltip="Modifica">
-              </p-button>
-              <p-button 
-                icon="pi pi-trash" 
-                [rounded]="true" 
-                [text]="true" 
-                severity="danger"
-                (onClick)="deleteConfig(config)"
-                pTooltip="Elimina">
-              </p-button>
-            </td>
-          </tr>
-        </ng-template>
+            </div>
+          </ng-template>
 
-        <ng-template pTemplate="emptymessage">
-          <tr>
-            <td colspan="5" class="text-center">
-              Nessuna configurazione trovata
-            </td>
-          </tr>
-        </ng-template>
-      </p-table>
+          <ng-template pTemplate="header">
+            <tr>
+              <th pSortableColumn="key">
+                Chiave <p-sortIcon field="key"></p-sortIcon>
+              </th>
+              <th>Valore</th>
+              <th pSortableColumn="category">
+                Categoria <p-sortIcon field="category"></p-sortIcon>
+              </th>
+              <th pSortableColumn="environment">
+                Ambiente <p-sortIcon field="environment"></p-sortIcon>
+              </th>
+              <th pSortableColumn="created_at">
+                Creazione <p-sortIcon field="created_at"></p-sortIcon>
+              </th>
+              <th pSortableColumn="updated_at">
+                Modifica <p-sortIcon field="updated_at"></p-sortIcon>
+              </th>
+              <th class="actions-column">Azioni</th>
+            </tr>
+          </ng-template>
+
+          <ng-template pTemplate="body" let-config>
+            <tr>
+              <td>
+                <strong class="key-text">{{ config.key }}</strong>
+              </td>
+              <td>
+                <div class="value-preview">
+                  {{ formatValue(config.value) }}
+                </div>
+              </td>
+              <td>
+                <span 
+                  *ngIf="config.category" 
+                  class="custom-tag"
+                  [style.background-color]="getColorForValue(config.category)"
+                  [style.color]="getTextColor(getColorForValue(config.category))">
+                  {{ config.category }}
+                </span>
+                <span *ngIf="!config.category" class="text-muted">-</span>
+              </td>
+              <td>
+                <span 
+                  *ngIf="config.environment" 
+                  class="custom-tag"
+                  [style.background-color]="getColorForValue(config.environment)"
+                  [style.color]="getTextColor(getColorForValue(config.environment))">
+                  {{ config.environment }}
+                </span>
+                <span *ngIf="!config.environment" class="text-muted">-</span>
+              </td>
+              <td>
+                <span class="date-text" *ngIf="getCreatedAt(config)">
+                  <i class="pi pi-calendar-plus"></i>
+                  {{ formatDate(getCreatedAt(config)) }}
+                </span>
+                <span *ngIf="!getCreatedAt(config)" class="text-muted">-</span>
+              </td>
+              <td>
+                <span class="date-text" *ngIf="getUpdatedAt(config)">
+                  <i class="pi pi-calendar"></i>
+                  {{ formatDate(getUpdatedAt(config)) }}
+                </span>
+                <span *ngIf="!getUpdatedAt(config)" class="text-muted">-</span>
+              </td>
+              <td class="actions-column">
+                <p-button 
+                  icon="pi pi-eye" 
+                  [rounded]="true" 
+                  [text]="true" 
+                  severity="info"
+                  (onClick)="viewConfig(config)"
+                  pTooltip="Visualizza">
+                </p-button>
+                <p-button 
+                  icon="pi pi-pencil" 
+                  [rounded]="true" 
+                  [text]="true" 
+                  severity="success"
+                  (onClick)="editConfig(config)"
+                  pTooltip="Modifica">
+                </p-button>
+                <p-button 
+                  icon="pi pi-trash" 
+                  [rounded]="true" 
+                  [text]="true" 
+                  severity="danger"
+                  (onClick)="deleteConfig(config)"
+                  pTooltip="Elimina">
+                </p-button>
+              </td>
+            </tr>
+          </ng-template>
+
+          <ng-template pTemplate="emptymessage">
+            <tr>
+              <td colspan="7" class="text-center">
+                Nessuna configurazione trovata
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      </div>
 
       <p-dialog 
         [(visible)]="displayDialog" 
@@ -233,35 +282,61 @@ import { ConfigEntry } from 'opensecureconf-client';
         [(visible)]="displayViewDialog" 
         header="Dettagli Configurazione"
         [modal]="true"
-        [style]="{ width: '50vw' }"
+        [style]="{ width: '60vw' }"
         [breakpoints]="{ '960px': '75vw', '640px': '90vw' }">
         
         <div class="view-container" *ngIf="viewingConfig">
-          <div class="view-field">
-            <strong>Chiave:</strong>
-            <span>{{ viewingConfig.key }}</span>
+          <div class="view-grid">
+            <div class="view-field">
+              <strong>Chiave:</strong>
+              <span class="view-value">{{ viewingConfig.key }}</span>
+            </div>
+
+            <div class="view-field" *ngIf="viewingConfig.id">
+              <strong>ID:</strong>
+              <span class="view-value">{{ viewingConfig.id }}</span>
+            </div>
+
+            <div class="view-field" *ngIf="viewingConfig.category">
+              <strong>Categoria:</strong>
+              <span 
+                class="custom-tag-large"
+                [style.background-color]="getColorForValue(viewingConfig.category)"
+                [style.color]="getTextColor(getColorForValue(viewingConfig.category))">
+                {{ viewingConfig.category }}
+              </span>
+            </div>
+
+            <div class="view-field" *ngIf="viewingConfig.environment">
+              <strong>Ambiente:</strong>
+              <span 
+                class="custom-tag-large"
+                [style.background-color]="getColorForValue(viewingConfig.environment)"
+                [style.color]="getTextColor(getColorForValue(viewingConfig.environment))">
+                {{ viewingConfig.environment }}
+              </span>
+            </div>
+
+            <div class="view-field" *ngIf="getCreatedAt(viewingConfig)">
+              <strong>Data Creazione:</strong>
+              <span class="view-value">
+                <i class="pi pi-calendar-plus"></i>
+                {{ formatDateLong(getCreatedAt(viewingConfig)) }}
+              </span>
+            </div>
+
+            <div class="view-field" *ngIf="getUpdatedAt(viewingConfig)">
+              <strong>Ultima Modifica:</strong>
+              <span class="view-value">
+                <i class="pi pi-calendar"></i>
+                {{ formatDateLong(getUpdatedAt(viewingConfig)) }}
+              </span>
+            </div>
           </div>
 
-          <div class="view-field">
+          <div class="view-field-full">
             <strong>Valore:</strong>
             <pre class="value-display">{{ formatValuePretty(viewingConfig.value) }}</pre>
-          </div>
-
-          <div class="view-field" *ngIf="viewingConfig.category">
-            <strong>Categoria:</strong>
-            <p-tag [value]="viewingConfig.category"></p-tag>
-          </div>
-
-          <div class="view-field" *ngIf="viewingConfig.environment">
-            <strong>Ambiente:</strong>
-            <p-tag [value]="viewingConfig.environment" 
-                   [severity]="getEnvironmentSeverity(viewingConfig.environment)">
-            </p-tag>
-          </div>
-
-          <div class="view-field" *ngIf="viewingConfig.id">
-            <strong>ID:</strong>
-            <span>{{ viewingConfig.id }}</span>
           </div>
         </div>
 
@@ -276,28 +351,235 @@ import { ConfigEntry } from 'opensecureconf-client';
     </div>
   `,
   styles: [`
-    .config-list { animation: fadeIn 0.3s; }
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
-    h1 { color: #495057; margin: 0; }
-    .table-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-    .filter-section { display: flex; gap: 0.5rem; }
-    .value-preview { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.875rem; }
-    .actions-column { width: 150px; text-align: center; }
-    .form-container { display: flex; flex-direction: column; gap: 1.5rem; }
-    .field { display: flex; flex-direction: column; gap: 0.5rem; }
-    .field label { font-weight: 600; color: #495057; }
-    .text-muted { color: #6c757d; font-style: italic; }
-    .view-container { display: flex; flex-direction: column; gap: 1.5rem; }
-    .view-field { display: flex; flex-direction: column; gap: 0.5rem; }
-    .view-field strong { color: #495057; }
-    .value-display { background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 1rem; font-family: monospace; font-size: 0.875rem; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; }
-    .w-full { width: 100%; }
-    .text-center { text-align: center; padding: 2rem; }
+    .config-list { 
+      animation: fadeInUp 0.5s ease-out; 
+    }
+
+    .page-header {
+      margin-bottom: 2rem;
+      background: var(--card-bg);
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px var(--shadow-sm);
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .page-header h1 {
+      color: var(--text-primary);
+      margin: 0 0 0.5rem 0;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .page-header h1 i {
+      color: #667eea;
+    }
+
+    .page-header p {
+      color: var(--text-secondary);
+      margin: 0;
+      font-size: 1.1rem;
+    }
+
+    .table-card {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 20px var(--shadow-sm);
+    }
+
+    .table-header { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center; 
+      flex-wrap: wrap; 
+      gap: 1rem; 
+    }
+    
+    .filter-section { 
+      display: flex; 
+      gap: 0.5rem; 
+    }
+    
+    .key-text {
+      color: var(--text-primary) !important;
+      font-weight: 600;
+    }
+    
+    .value-preview { 
+      max-width: 300px; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      white-space: nowrap; 
+      font-family: monospace; 
+      font-size: 0.875rem;
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+      padding: 0.5rem;
+      border-radius: 6px;
+    }
+
+    .custom-tag {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+
+    .custom-tag:hover {
+      transform: scale(1.05);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .custom-tag-large {
+      display: inline-block;
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 25px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .date-text {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .date-text i {
+      color: #667eea;
+    }
+    
+    .actions-column { 
+      width: 150px; 
+      text-align: center; 
+    }
+    
+    .form-container { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 1.5rem; 
+    }
+    
+    .field { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 0.5rem; 
+    }
+    
+    .field label { 
+      font-weight: 600; 
+      color: var(--text-primary);
+    }
+    
+    .text-muted { 
+      color: var(--text-secondary) !important; 
+      font-style: italic; 
+    }
+    
+    .view-container { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 2rem; 
+    }
+
+    .view-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+    }
+    
+    .view-field { 
+      display: flex; 
+      flex-direction: column; 
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--bg-secondary);
+      border-radius: 12px;
+    }
+
+    .view-field-full {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    
+    .view-field strong,
+    .view-field-full strong { 
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .view-value {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .view-value i {
+      color: #667eea;
+    }
+    
+    .value-display { 
+      background-color: var(--bg-secondary) !important;
+      color: var(--text-primary) !important;
+      border: 1px solid var(--border-color) !important;
+      border-radius: 8px !important;
+      padding: 1rem !important;
+      font-family: 'Courier New', monospace !important;
+      font-size: 0.875rem !important;
+      white-space: pre-wrap !important;
+      word-wrap: break-word !important;
+      max-height: 400px !important;
+      overflow-y: auto !important;
+      line-height: 1.6 !important;
+    }
+    
+    .w-full { 
+      width: 100%; 
+    }
+    
+    .text-center { 
+      text-align: center; 
+      padding: 2rem;
+      color: var(--text-secondary);
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   `]
 })
 export class ConfigListComponent implements OnInit {
-  configs: ConfigEntry[] = [];
+  configs: ExtendedConfigEntry[] = [];
   categories: string[] = [];
   environments: string[] = [];
   categoryOptions: Array<{ label: string; value: string }> = [];
@@ -318,7 +600,7 @@ export class ConfigListComponent implements OnInit {
   
   currentConfig: Partial<ConfigEntry> = {};
   currentConfigValueString = '';
-  viewingConfig: ConfigEntry | null = null;
+  viewingConfig: ExtendedConfigEntry | null = null;
 
   constructor(
     private oscService: OpenSecureConfService,
@@ -331,6 +613,46 @@ export class ConfigListComponent implements OnInit {
     this.loadFilters();
   }
 
+  // Helper per accedere alle date in modo sicuro
+  getCreatedAt(config: any): string | null {
+    return config?.created_at || config?.createdAt || null;
+  }
+
+  getUpdatedAt(config: any): string | null {
+    return config?.updated_at || config?.updatedAt || null;
+  }
+
+  // Genera un colore deterministico basato su un valore stringa
+  getColorForValue(value: string): string {
+    if (!value) return '#6c757d';
+    
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) {
+      hash = value.charCodeAt(i) + ((hash << 5) - hash);
+      hash = hash & hash;
+    }
+    
+    const colors = [
+      '#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a',
+      '#feca57', '#ff6348', '#1dd1a1', '#5f27cd', '#00d2d3',
+      '#fd79a8', '#fdcb6e', '#6c5ce7', '#a29bfe', '#00b894',
+      '#ff7675', '#74b9ff', '#fab1a0', '#55efc4', '#ffeaa7',
+    ];
+    
+    const index = Math.abs(hash) % colors.length;
+    return colors[index];
+  }
+
+  getTextColor(backgroundColor: string): string {
+    const hex = backgroundColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+  }
+
   loadConfigs() {
     this.loading = true;
     const filters: any = {};
@@ -340,7 +662,7 @@ export class ConfigListComponent implements OnInit {
 
     this.oscService.listConfigs(filters).subscribe({
       next: (configs) => {
-        this.configs = configs;
+        this.configs = configs as ExtendedConfigEntry[];
         this.loading = false;
       },
       error: (error) => {
@@ -377,7 +699,7 @@ export class ConfigListComponent implements OnInit {
     this.displayDialog = true;
   }
 
-  viewConfig(config: ConfigEntry) {
+  viewConfig(config: ExtendedConfigEntry) {
     this.viewingConfig = config;
     this.displayViewDialog = true;
   }
@@ -442,6 +764,32 @@ export class ConfigListComponent implements OnInit {
 
   formatValuePretty(value: any): string {
     return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+  }
+
+  formatDate(dateString: string | null): string {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('it-IT', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  formatDateLong(dateString: string | null): string {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('it-IT', { 
+      weekday: 'long',
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   }
 
   getEnvironmentSeverity(environment: string): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' {

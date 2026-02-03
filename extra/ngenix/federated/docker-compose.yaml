@@ -30,7 +30,7 @@ services:
       - OSC_SALT_FILE_PATH=/app/data/encryption.salt
       - OSC_MIN_USER_KEY_LENGTH=8
       - OSC_API_KEY_REQUIRED=true
-      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_API_KEY=123456789-api-key
       - OSC_CLUSTER_ENABLED=true
       - OSC_CLUSTER_MODE=federated
       - OSC_CLUSTER_NODE_ID=node1:9000
@@ -58,7 +58,7 @@ services:
       - OSC_SALT_FILE_PATH=/app/data/encryption.salt
       - OSC_MIN_USER_KEY_LENGTH=8
       - OSC_API_KEY_REQUIRED=true
-      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_API_KEY=123456789-api-key
       - OSC_CLUSTER_ENABLED=true
       - OSC_CLUSTER_MODE=federated
       - OSC_CLUSTER_NODE_ID=node2:9000
@@ -86,7 +86,7 @@ services:
       - OSC_SALT_FILE_PATH=/app/data/encryption.salt
       - OSC_MIN_USER_KEY_LENGTH=8
       - OSC_API_KEY_REQUIRED=true
-      - OSC_API_KEY=cluster-secret-key-123
+      - OSC_API_KEY=123456789-api-key
       - OSC_CLUSTER_ENABLED=true
       - OSC_CLUSTER_MODE=federated
       - OSC_CLUSTER_NODE_ID=node3:9000

@@ -247,7 +247,7 @@ export OSC_WORKERS=4
 
 # Security
 export OSC_API_KEY_REQUIRED=true
-export OSC_API_KEY=cluster-secret-key-123
+export OSC_API_KEY=123456789-api-key
 
 # Cluster Configuration
 export OSC_CLUSTER_ENABLED=true
