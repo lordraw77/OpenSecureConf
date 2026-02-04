@@ -106,7 +106,7 @@ interface ServiceInfo {
                   <div class="info-label">Cluster</div>
                   <p-tag 
                     [value]="clusterEnabled ? 'Abilitato' : 'Disabilitato'" 
-                    [severity]="clusterEnabled ? 'success' : 'warning'"
+                    [severity]="clusterEnabled ? 'success' : 'secondary'"
                     [rounded]="true">
                   </p-tag>
                 </div>
@@ -442,7 +442,6 @@ export class DashboardComponent implements OnInit {
     this.loadDashboardData();
   }
 
-  // FNV-1a hash per distribuzione migliorata
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
     
@@ -479,19 +478,31 @@ export class DashboardComponent implements OnInit {
 
   private async loadDashboardData() {
     try {
+      // Carica info servizio - questa è la fonte principale per cluster_enabled
       this.oscService.getInfo().subscribe({
         next: (info) => {
           this.serviceInfo = info as ServiceInfo;
-          this.clusterEnabled = (info as any).cluster_enabled || false;
+          // Imposta cluster_enabled SOLO da serviceInfo
+          this.clusterEnabled = info.cluster_enabled === true;
+          console.log('Service info loaded. Cluster enabled:', this.clusterEnabled);
         },
-        error: (err) => console.error('Error loading service info:', err)
+        error: (err) => {
+          console.error('Error loading service info:', err);
+          this.clusterEnabled = false;
+        }
       });
 
+      // Prova a caricare cluster distribution solo se necessario
+      // Ma NON usare questo per determinare clusterEnabled
       this.oscService.getClusterDistribution().subscribe({
         next: (distribution) => {
-          this.clusterEnabled = distribution.cluster_mode !== 'disabled';
+          console.log('Cluster distribution loaded:', distribution);
+          // Non modificare clusterEnabled qui
         },
-        error: (err) => console.error('Error loading cluster info:', err)
+        error: (err) => {
+          // Errore 400 è normale se cluster non è abilitato
+          console.log('Cluster distribution not available (expected if cluster is disabled)');
+        }
       });
 
       this.oscService.listConfigs().subscribe({
