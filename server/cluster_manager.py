@@ -365,7 +365,7 @@ class ClusterManager:
         # This is called by the sync process - implementation in api.py
 
 
-    async def broadcast_create(self, key: str, value: dict, category: str, user_key: str):
+    async def broadcast_create(self, key: str, value: dict, category: str, environment: str, user_key: str):
         """
         Broadcast a configuration creation to all healthy nodes (REPLICA mode).
 
@@ -401,12 +401,12 @@ class ClusterManager:
                     await client.post(
                         f"{node.base_url}/configs",
                         headers=headers,
-                        json={"key": key, "value": value, "category": category}
+                        json={"key": key, "value": value, "category": category,"environment": environment}
                     )
                 except Exception as e:
                     logger.info("broadcast_create_failed", node_id=node.node_id, error=str(e))
 
-    async def broadcast_update(self, key: str, value: dict, category: str, user_key: str):
+    async def broadcast_update(self, key: str, value: dict, category: str, environment: str, user_key: str):
         """
         Broadcast a configuration update to all healthy nodes (REPLICA mode).
 
@@ -442,7 +442,7 @@ class ClusterManager:
                     await client.put(
                         f"{node.base_url}/configs/{key}",
                         headers=headers,
-                        json={"value": value, "category": category}
+                        json={"value": value, "category": category,"environment": environment}
                     )
                 except Exception as e:
                     logger.info("broadcast_update_failed", node_id=node.node_id, error=str(e))

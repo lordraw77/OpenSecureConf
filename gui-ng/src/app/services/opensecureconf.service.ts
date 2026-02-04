@@ -83,6 +83,19 @@ export class OpenSecureConfService {
     return from(this.client.getClusterStatus());
   }
 
+  // Nuovo metodo per cluster distribution
+  getClusterDistribution(): Observable<any> {
+    return from(
+      fetch(`${this.client['baseUrl']}/cluster/distribution`, {
+        headers: {
+          'x-user-key': this.client['userKey'],
+          'x-api-key': this.client['apiKey'] || '',
+          'accept': 'application/json'
+        }
+      }).then(res => res.json())
+    );
+  }
+
   healthCheck(): Observable<{ status: string; node_id: string }> {
     return from(this.client.healthCheck());
   }

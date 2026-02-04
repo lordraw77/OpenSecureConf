@@ -14,7 +14,6 @@ import { ConfirmationService, MessageService } from 'primeng/api';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
 import { ConfigEntry } from 'opensecureconf-client';
 
-// Estendi ConfigEntry per includere date
 interface ExtendedConfigEntry extends ConfigEntry {
   created_at?: string;
   updated_at?: string;
@@ -66,6 +65,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
           [value]="configs" 
           [paginator]="true" 
           [rows]="10"
+          [rowsPerPageOptions]="[10, 25, 50]"
           [loading]="loading"
           [globalFilterFields]="['key', 'category', 'environment']"
           [tableStyle]="{ 'min-width': '100%' }"
@@ -613,7 +613,6 @@ export class ConfigListComponent implements OnInit {
     this.loadFilters();
   }
 
-  // Helper per accedere alle date in modo sicuro
   getCreatedAt(config: any): string | null {
     return config?.created_at || config?.createdAt || null;
   }
@@ -622,24 +621,37 @@ export class ConfigListComponent implements OnInit {
     return config?.updated_at || config?.updatedAt || null;
   }
 
-  // Genera un colore deterministico basato su un valore stringa
+  // Hash migliorato per maggiore distribuzione dei colori
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
     
-    let hash = 0;
+    // FNV-1a hash per migliore distribuzione
+    let hash = 2166136261;
     for (let i = 0; i < value.length; i++) {
-      hash = value.charCodeAt(i) + ((hash << 5) - hash);
-      hash = hash & hash;
+      hash ^= value.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
+    hash = hash >>> 0; // Convert to unsigned 32-bit integer
     
+    // Palette espansa con 40 colori distintivi
     const colors = [
-      '#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a',
-      '#feca57', '#ff6348', '#1dd1a1', '#5f27cd', '#00d2d3',
-      '#fd79a8', '#fdcb6e', '#6c5ce7', '#a29bfe', '#00b894',
-      '#ff7675', '#74b9ff', '#fab1a0', '#55efc4', '#ffeaa7',
+      // Blues
+      '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
+      // Greens
+      '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
+      // Purples & Pinks
+      '#5f27cd', '#6c5ce7', '#a29bfe', '#764ba2', '#f093fb', '#fa709a', '#fd79a8', '#ec4899',
+      // Oranges & Yellows
+      '#feca57', '#fdcb6e', '#f59e0b', '#d97706', '#fb923c', '#f97316', '#ff6348', '#fbbf24',
+      // Reds
+      '#ff7675', '#ef4444', '#dc2626', '#b91c1c',
+      // Teals & Cyans
+      '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
+      // Others
+      '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
     ];
     
-    const index = Math.abs(hash) % colors.length;
+    const index = hash % colors.length;
     return colors[index];
   }
 
@@ -790,13 +802,5 @@ export class ConfigListComponent implements OnInit {
       minute: '2-digit',
       second: '2-digit'
     });
-  }
-
-  getEnvironmentSeverity(environment: string): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' {
-    const envLower = environment?.toLowerCase();
-    if (envLower === 'production' || envLower === 'prod') return 'danger';
-    if (envLower === 'staging' || envLower === 'stage') return 'warning';
-    if (envLower === 'development' || envLower === 'dev') return 'info';
-    return 'secondary';
   }
 }

@@ -114,11 +114,11 @@ fi
 # Add latest tag
 BUILD_CMD="$BUILD_CMD -t ${FULL_IMAGE_NAME}:latest"
 
-# Add cache options
-if [ "$USE_CACHE" = "true" ]; then
-    BUILD_CMD="$BUILD_CMD --cache-from type=registry,ref=${FULL_IMAGE_NAME}:buildcache"
-    BUILD_CMD="$BUILD_CMD --cache-to type=registry,ref=${FULL_IMAGE_NAME}:buildcache,mode=max"
-fi
+# # Add cache options
+# if [ "$USE_CACHE" = "true" ]; then
+#     BUILD_CMD="$BUILD_CMD --cache-from type=registry,ref=${FULL_IMAGE_NAME}:buildcache"
+#     BUILD_CMD="$BUILD_CMD --cache-to type=registry,ref=${FULL_IMAGE_NAME}:buildcache,mode=max"
+# fi
 
 # Add build args if specified
 if [ -n "$BUILD_ARGS" ]; then

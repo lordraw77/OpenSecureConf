@@ -151,8 +151,7 @@ async def get_cluster_distribution(
     except Exception as e:
         api_errors_total.labels(endpoint="/cluster/distribution", error_type="internal_error").inc()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e
-
-
+ 
 @router.get("/health")
 async def cluster_health():
     """
@@ -163,29 +162,93 @@ async def cluster_health():
     return {"status": "healthy", "node_id": OSC_CLUSTER_NODE_ID}
 
 
+# @router.get("/configs")
+# async def cluster_list_configs(
+#     category: Optional[str] = None,
+#     environment: Optional[str] = None,
+#     manager: ConfigurationManager = Depends(get_config_manager)
+# ):
+#     """
+#     Internal endpoint for cluster synchronization.
+
+#     Returns all configurations for sync and federated queries.
+#     """
+#     try:
+#         result = await asyncio.to_thread(
+#             manager.list_all,
+#             category=category,
+#             environment=environment,
+#             include_timestamps=True
+#         )
+#         return result
+#     except Exception as e:
+#         api_errors_total.labels(endpoint="/cluster/configs", error_type="internal_error").inc()
+#         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e
+
 @router.get("/configs")
 async def cluster_list_configs(
     category: Optional[str] = None,
     environment: Optional[str] = None,
-    manager: ConfigurationManager = Depends(get_config_manager)
+    api_key_validated: None = Depends(validate_api_key)
 ):
     """
     Internal endpoint for cluster synchronization.
-
     Returns all configurations for sync and federated queries.
     """
     try:
-        result = await asyncio.to_thread(
-            manager.list_all,
-            category=category,
-            environment=environment,
-            include_timestamps=True
-        )
+        from core.config import OSC_DATABASE_PATH
+        import sqlite3
+        
+        # Query DIRETTA al database senza encryption overhead
+        conn = sqlite3.connect(OSC_DATABASE_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Query veloce solo per chiavi e metadati (non valori encrypted)
+        query = """
+            SELECT 
+                key,
+                category,
+                environment,
+                created_at,
+                updated_at
+            FROM configurations
+        """
+        
+        params = []
+        conditions = []
+        
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+        
+        if environment:
+            conditions.append("environment = ?")
+            params.append(environment)
+        
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Converti in lista di dict
+        result = []
+        for row in rows:
+            result.append({
+                "key": row["key"],
+                "category": row["category"],
+                "environment": row["environment"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"]
+            })
+        
         return result
+        
     except Exception as e:
         api_errors_total.labels(endpoint="/cluster/configs", error_type="internal_error").inc()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e
-
 
 @router.get("/salt")
 async def get_cluster_salt(api_key_validated: None = Depends(validate_api_key)):

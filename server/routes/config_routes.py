@@ -116,7 +116,7 @@ async def create_configuration(
             if cluster_manager.cluster_mode == ClusterMode.REPLICA:
                 asyncio.create_task(
                     cluster_manager.broadcast_create(
-                        config.key, config.value, config.category, x_user_key
+                        config.key, config.value, config.category,config.environment, x_user_key
                     )
                 )
 
@@ -269,7 +269,7 @@ async def update_configuration(
             if cluster_manager.cluster_mode == ClusterMode.REPLICA:
                 asyncio.create_task(
                     cluster_manager.broadcast_update(
-                        key, config.value, config.category, x_user_key
+                        key, config.value, config.category, config.environment, x_user_key
                     )
                 )
 

@@ -105,8 +105,8 @@ interface ServiceInfo {
                 <div>
                   <div class="info-label">Cluster</div>
                   <p-tag 
-                    [value]="serviceInfo.cluster_enabled ? 'Abilitato' : 'Disabilitato'" 
-                    [severity]="serviceInfo.cluster_enabled ? 'success' : 'warning'"
+                    [value]="clusterEnabled ? 'Abilitato' : 'Disabilitato'" 
+                    [severity]="clusterEnabled ? 'success' : 'warning'"
                     [rounded]="true">
                   </p-tag>
                 </div>
@@ -117,65 +117,91 @@ interface ServiceInfo {
       </div>
 
       <div class="grid mt-4">
-        <div class="col-12 lg:col-6" *ngIf="categories.length > 0">
+        <div class="col-12 lg:col-6">
           <p-card>
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-tag"></i>
-                Configurazioni per Categoria
+                Configurazioni per Categoria ({{ categoryStats.length }})
               </div>
             </ng-template>
-            <p-table [value]="categoryStats" [tableStyle]="{ 'min-width': '100%' }">
-              <ng-template pTemplate="header">
-                <tr>
-                  <th>Categoria</th>
-                  <th class="text-right">Conteggio</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-stat>
-                <tr>
-                  <td>
-                    <p-tag [value]="stat.category || 'Senza categoria'" [rounded]="true"></p-tag>
-                  </td>
-                  <td class="text-right">
-                    <span class="count-badge">{{ stat.count }}</span>
-                  </td>
-                </tr>
-              </ng-template>
-            </p-table>
+            <div *ngIf="categoryStats.length > 0">
+              <p-table 
+                [value]="categoryStats" 
+                [tableStyle]="{ 'min-width': '100%' }"
+                [scrollable]="true"
+                scrollHeight="400px">
+                <ng-template pTemplate="header">
+                  <tr>
+                    <th>Categoria</th>
+                    <th class="text-right">Conteggio</th>
+                  </tr>
+                </ng-template>
+                <ng-template pTemplate="body" let-stat>
+                  <tr>
+                    <td>
+                      <span 
+                        class="custom-tag"
+                        [style.background-color]="getColorForValue(stat.category)"
+                        [style.color]="getTextColor(getColorForValue(stat.category))">
+                        {{ stat.category || 'Senza categoria' }}
+                      </span>
+                    </td>
+                    <td class="text-right">
+                      <span class="count-badge">{{ stat.count }}</span>
+                    </td>
+                  </tr>
+                </ng-template>
+              </p-table>
+            </div>
+            <div *ngIf="categoryStats.length === 0" class="empty-message">
+              <i class="pi pi-inbox empty-icon"></i>
+              <p>Nessuna categoria trovata</p>
+            </div>
           </p-card>
         </div>
 
-        <div class="col-12 lg:col-6" *ngIf="environments.length > 0">
+        <div class="col-12 lg:col-6">
           <p-card>
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-sitemap"></i>
-                Configurazioni per Ambiente
+                Configurazioni per Ambiente ({{ environmentStats.length }})
               </div>
             </ng-template>
-            <p-table [value]="environmentStats" [tableStyle]="{ 'min-width': '100%' }">
-              <ng-template pTemplate="header">
-                <tr>
-                  <th>Ambiente</th>
-                  <th class="text-right">Conteggio</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-stat>
-                <tr>
-                  <td>
-                    <p-tag 
-                      [value]="stat.environment || 'Senza ambiente'" 
-                      [severity]="getEnvironmentSeverity(stat.environment)"
-                      [rounded]="true">
-                    </p-tag>
-                  </td>
-                  <td class="text-right">
-                    <span class="count-badge">{{ stat.count }}</span>
-                  </td>
-                </tr>
-              </ng-template>
-            </p-table>
+            <div *ngIf="environmentStats.length > 0">
+              <p-table 
+                [value]="environmentStats" 
+                [tableStyle]="{ 'min-width': '100%' }"
+                [scrollable]="true"
+                scrollHeight="400px">
+                <ng-template pTemplate="header">
+                  <tr>
+                    <th>Ambiente</th>
+                    <th class="text-right">Conteggio</th>
+                  </tr>
+                </ng-template>
+                <ng-template pTemplate="body" let-stat>
+                  <tr>
+                    <td>
+                      <span 
+                        class="custom-tag"
+                        [style.background-color]="getColorForValue(stat.environment)"
+                        [style.color]="getTextColor(getColorForValue(stat.environment))">
+                        {{ stat.environment || 'Senza ambiente' }}
+                      </span>
+                    </td>
+                    <td class="text-right">
+                      <span class="count-badge">{{ stat.count }}</span>
+                    </td>
+                  </tr>
+                </ng-template>
+              </p-table>
+            </div>
+            <div *ngIf="environmentStats.length === 0" class="empty-message">
+              <i class="pi pi-inbox empty-icon"></i>
+              <p>Nessun ambiente trovato</p>
+            </div>
           </p-card>
         </div>
       </div>
@@ -340,6 +366,22 @@ interface ServiceInfo {
       font-weight: 600;
     }
 
+    .custom-tag {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+
+    .custom-tag:hover {
+      transform: scale(1.05);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
     .text-right {
       text-align: right;
     }
@@ -352,6 +394,23 @@ interface ServiceInfo {
       border-radius: 20px;
       font-weight: 600;
       font-size: 1rem;
+    }
+
+    .empty-message {
+      text-align: center;
+      padding: 3rem 2rem;
+      color: var(--text-secondary);
+    }
+
+    .empty-icon {
+      font-size: 3rem;
+      color: var(--text-tertiary);
+      margin-bottom: 1rem;
+    }
+
+    .empty-message p {
+      margin: 0;
+      font-size: 1.1rem;
     }
 
     @keyframes fadeInUp {
@@ -383,57 +442,101 @@ export class DashboardComponent implements OnInit {
     this.loadDashboardData();
   }
 
+  // FNV-1a hash per distribuzione migliorata
+  getColorForValue(value: string): string {
+    if (!value) return '#6c757d';
+    
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    hash = hash >>> 0;
+    
+    const colors = [
+      '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
+      '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
+      '#5f27cd', '#6c5ce7', '#a29bfe', '#764ba2', '#f093fb', '#fa709a', '#fd79a8', '#ec4899',
+      '#feca57', '#fdcb6e', '#f59e0b', '#d97706', '#fb923c', '#f97316', '#ff6348', '#fbbf24',
+      '#ff7675', '#ef4444', '#dc2626', '#b91c1c',
+      '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
+      '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
+    ];
+    
+    const index = hash % colors.length;
+    return colors[index];
+  }
+
+  getTextColor(backgroundColor: string): string {
+    const hex = backgroundColor.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+  }
+
   private async loadDashboardData() {
     try {
-      this.oscService.getInfo().subscribe(info => {
-        this.serviceInfo = info as ServiceInfo;
-        this.clusterEnabled = (info as any).cluster_enabled || false;
+      this.oscService.getInfo().subscribe({
+        next: (info) => {
+          this.serviceInfo = info as ServiceInfo;
+          this.clusterEnabled = (info as any).cluster_enabled || false;
+        },
+        error: (err) => console.error('Error loading service info:', err)
       });
 
-      this.oscService.listConfigs().subscribe(configs => {
-        this.totalConfigs = configs.length;
-
-        const categoryMap = new Map<string, number>();
-        const environmentMap = new Map<string, number>();
-
-        configs.forEach(config => {
-          const cat = config.category || 'uncategorized';
-          const env = config.environment || 'default';
-
-          categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
-          environmentMap.set(env, (environmentMap.get(env) || 0) + 1);
-        });
-
-        this.categoryStats = Array.from(categoryMap.entries()).map(([category, count]) => ({
-          category,
-          count
-        }));
-
-        this.environmentStats = Array.from(environmentMap.entries()).map(([environment, count]) => ({
-          environment,
-          count
-        }));
+      this.oscService.getClusterDistribution().subscribe({
+        next: (distribution) => {
+          this.clusterEnabled = distribution.cluster_mode !== 'disabled';
+        },
+        error: (err) => console.error('Error loading cluster info:', err)
       });
 
-      this.oscService.listCategories().subscribe(cats => {
-        this.categories = cats;
-        this.totalCategories = cats.length;
+      this.oscService.listConfigs().subscribe({
+        next: (configs) => {
+          this.totalConfigs = configs.length;
+
+          const categoryMap = new Map<string, number>();
+          const environmentMap = new Map<string, number>();
+
+          configs.forEach(config => {
+            const cat = config.category || 'uncategorized';
+            const env = config.environment || 'default';
+
+            categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
+            environmentMap.set(env, (environmentMap.get(env) || 0) + 1);
+          });
+
+          this.categoryStats = Array.from(categoryMap.entries())
+            .map(([category, count]) => ({ category, count }))
+            .sort((a, b) => b.count - a.count);
+
+          this.environmentStats = Array.from(environmentMap.entries())
+            .map(([environment, count]) => ({ environment, count }))
+            .sort((a, b) => b.count - a.count);
+        },
+        error: (err) => console.error('Error loading configs:', err)
       });
 
-      this.oscService.listEnvironments().subscribe(envs => {
-        this.environments = envs;
-        this.totalEnvironments = envs.length;
+      this.oscService.listCategories().subscribe({
+        next: (cats) => {
+          this.categories = cats;
+          this.totalCategories = cats.length;
+        },
+        error: (err) => console.error('Error loading categories:', err)
+      });
+
+      this.oscService.listEnvironments().subscribe({
+        next: (envs) => {
+          this.environments = envs;
+          this.totalEnvironments = envs.length;
+        },
+        error: (err) => console.error('Error loading environments:', err)
       });
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     }
-  }
-
-  getEnvironmentSeverity(environment: string): 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast' {
-    const envLower = environment?.toLowerCase();
-    if (envLower === 'production' || envLower === 'prod') return 'danger';
-    if (envLower === 'staging' || envLower === 'stage') return 'warning';
-    if (envLower === 'development' || envLower === 'dev') return 'info';
-    return 'secondary';
   }
 }
