@@ -97,29 +97,10 @@ class ConfigCreate(BaseModel):
             "environment": "production"
         }
     """
-    key: str = Field(
-        ...,  # Required field
-        min_length=1,
-        max_length=255,
-        description="Unique configuration key identifier"
-    )
-
-    value: Union[dict, str, int, bool, list] = Field(
-        ...,
-        description="Configuration value (dict, string, int, bool, or list - will be encrypted)"
-    )
-
-    category: Optional[str] = Field(
-        None,  # Optional field
-        max_length=100,
-        description="Optional category for grouping configurations"
-    )
-
-    environment: Optional[str] = Field(
-        None,  # Optional field
-        max_length=100,
-        description="Optional environment identifier (e.g., production, staging)"
-    )
+    key: str = Field(..., min_length=1, max_length=255, description="Unique configuration key identifier")
+    value: Union[dict, str, int, bool, list] = Field(..., description="Configuration value (dict, string, int, bool, or list - will be encrypted)")
+    category: Optional[str] = Field(None, max_length=100, description="Optional category for grouping configurations")
+    environment: str = Field(..., min_length=1, max_length=100, description="Environment identifier (REQUIRED)")
 
 
 class ConfigUpdate(BaseModel):
@@ -137,16 +118,11 @@ class ConfigUpdate(BaseModel):
         category: New category label or None to remove category
                   Updates the category metadata
                   Example: "database_v2"
-
-        environment: New environment identifier or None to remove environment
-                     Updates the environment metadata
-                     Example: "production_eu"
-
+                  
     Validation Rules:
         - value: Required, must be valid JSON dictionary
         - category: Optional, max 100 characters
-        - environment: Optional, max 100 characters
-
+        
     Note:
         - The key cannot be changed (it's the primary identifier)
         - To change a key, delete the old entry and create a new one
@@ -177,12 +153,7 @@ class ConfigUpdate(BaseModel):
         description="Optional category for grouping configurations"
     )
 
-    environment: Optional[str] = Field(
-        None,  # Optional field
-        max_length=100,
-        description="Optional environment identifier"
-    )
-
+ 
 
 class ConfigResponse(BaseModel):
     """

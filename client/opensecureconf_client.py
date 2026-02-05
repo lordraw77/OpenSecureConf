@@ -13,7 +13,8 @@ Enhanced Features:
 - Enhanced input validation
 - Health check utilities
 - Support for multiple value types (dict, str, int, bool, list)
-- Category and environment support
+- Multi-environment support (same key in different environments)
+- Environment-based configuration isolation
 """
 
 from typing import Any, Dict, List, Optional, Union
@@ -24,28 +25,36 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import Timeout, RequestException
 from urllib3.util.retry import Retry
 
+
 # ============================================================================
 # EXCEPTIONS
 # ============================================================================
 
+
 class OpenSecureConfError(Exception):
     """Base exception for OpenSecureConf client errors."""
+
 
 class AuthenticationError(OpenSecureConfError):
     """Raised when authentication fails (invalid or missing user key)."""
 
+
 class ConfigurationNotFoundError(OpenSecureConfError):
     """Raised when a requested configuration key does not exist."""
+
 
 class ConfigurationExistsError(OpenSecureConfError):
     """Raised when attempting to create a configuration that already exists."""
 
+
 class ClusterError(OpenSecureConfError):
     """Raised when cluster operations fail."""
+
 
 # ============================================================================
 # CLIENT
 # ============================================================================
+
 
 class OpenSecureConfClient:
     """
@@ -69,12 +78,11 @@ class OpenSecureConfClient:
         ...     enable_retry=True,
         ...     log_level="INFO"
         ... )
-        >>> # Dict value with category and environment
-        >>> config = client.create("database", {"host": "localhost", "port": 5432}, 
-        ...                         category="config", environment="production")
-        >>> # String value
-        >>> config = client.create("api_token", "secret-token-123", 
-        ...                         category="auth", environment="staging")
+        >>> # Same key in different environments
+        >>> prod_config = client.create("database", {"host": "db.prod.com", "port": 5432}, 
+        ...                              "production", "config")
+        >>> staging_config = client.create("database", {"host": "db.staging.com", "port": 5432}, 
+        ...                                 "staging", "config")
     """
 
     def __init__(
@@ -349,143 +357,163 @@ class OpenSecureConfClient:
         self,
         key: str,
         value: Union[Dict[str, Any], str, int, bool, list],
-        category: Optional[str] = None,
-        environment: Optional[str] = None
+        environment: str,
+        category: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a new encrypted configuration entry.
 
         Args:
-            key: Unique configuration key (1-255 characters)
+            key: Configuration key (1-255 characters)
             value: Configuration data (dict, string, int, bool, or list - will be encrypted)
+            environment: Environment identifier (REQUIRED, max 100 characters)
             category: Optional category for grouping (max 100 characters)
-            environment: Optional environment identifier (max 100 characters)
 
         Returns:
             Dictionary containing the created configuration with fields:
             - id: Configuration ID
             - key: Configuration key
             - value: Configuration value (decrypted)
+            - environment: Environment identifier
             - category: Configuration category (if set)
-            - environment: Environment identifier (if set)
 
         Raises:
-            ConfigurationExistsError: If configuration key already exists
-            ValueError: If key is invalid
+            ConfigurationExistsError: If configuration (key, environment) already exists
+            ValueError: If key or environment is invalid
 
         Example:
-            >>> # Dict value with category and environment
-            >>> config = client.create("database", {"host": "localhost", "port": 5432}, 
-            ...                         category="config", environment="production")
+            >>> # Same key in different environments
+            >>> prod_config = client.create("database", {"host": "db.prod.com", "port": 5432}, 
+            ...                              "production", "config")
+            >>> staging_config = client.create("database", {"host": "db.staging.com", "port": 5432}, 
+            ...                                 "staging", "config")
             >>> # String value
-            >>> config = client.create("api_token", "secret-123", 
-            ...                         category="auth", environment="staging")
+            >>> client.create("api_token", "secret-123", "production", "auth")
             >>> # Integer value
-            >>> config = client.create("max_retries", 3, environment="production")
+            >>> client.create("max_retries", 3, "production")
             >>> # Boolean value
-            >>> config = client.create("debug", False, category="settings", environment="dev")
+            >>> client.create("debug", False, "development", "settings")
         """
         # Enhanced validation
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
         if len(key) > 255:
             raise ValueError("Key must be between 1 and 255 characters")
+        if not environment or not isinstance(environment, str):
+            raise ValueError("Environment is required and must be a non-empty string")
+        if len(environment) > 100:
+            raise ValueError("Environment must be max 100 characters")
         if category and len(category) > 100:
             raise ValueError("Category must be max 100 characters")
-        if environment and len(environment) > 100:
-            raise ValueError("Environment must be max 100 characters")
 
-        payload = {"key": key, "value": value, "category": category, "environment": environment}
+        payload = {
+            "key": key, 
+            "value": value, 
+            "environment": environment,
+            "category": category
+        }
         return self._make_request("POST", "/configs", json=payload)
 
-    def read(self, key: str) -> Dict[str, Any]:
+    def read(self, key: str, environment: str) -> Dict[str, Any]:
         """
-        Read and decrypt a configuration entry by key.
+        Read and decrypt a configuration entry by key and environment.
 
         Args:
             key: Configuration key to retrieve
+            environment: Environment identifier (REQUIRED)
 
         Returns:
             Dictionary containing the configuration with decrypted value
             The value can be dict, str, int, bool, or list depending on what was stored
 
         Raises:
-            ConfigurationNotFoundError: If configuration key does not exist
-            ValueError: If key is invalid
+            ConfigurationNotFoundError: If configuration (key, environment) does not exist
+            ValueError: If key or environment is invalid
 
         Example:
-            >>> config = client.read("database")
-            >>> print(config["value"])  # Could be any supported type
-            >>> print(config["environment"])  # e.g., "production"
+            >>> prod_config = client.read("database", "production")
+            >>> staging_config = client.read("database", "staging")
+            >>> print(prod_config["value"])  # Different from staging
+            >>> print(prod_config["environment"])  # "production"
         """
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
+        if not environment or not isinstance(environment, str):
+            raise ValueError("Environment is required and must be a non-empty string")
 
-        return self._make_request("GET", f"/configs/{key}")
+        params = {"environment": environment}
+        return self._make_request("GET", f"/configs/{key}", params=params)
 
     def update(
         self,
         key: str,
+        environment: str,
         value: Union[Dict[str, Any], str, int, bool, list],
-        category: Optional[str] = None,
-        environment: Optional[str] = None
+        category: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Update an existing configuration entry with new encrypted value.
 
         Args:
             key: Configuration key to update
+            environment: Environment identifier (REQUIRED, cannot be changed)
             value: New configuration data (dict, string, int, bool, or list - will be encrypted)
             category: Optional new category
-            environment: Optional new environment
 
         Returns:
             Dictionary containing the updated configuration with decrypted value
 
         Raises:
-            ConfigurationNotFoundError: If configuration key does not exist
-            ValueError: If key is invalid
+            ConfigurationNotFoundError: If configuration (key, environment) does not exist
+            ValueError: If key or environment is invalid
 
         Example:
-            >>> # Update with dict
-            >>> config = client.update("database", {"host": "db.example.com", "port": 5432},
-            ...                        environment="production")
-            >>> # Update with string and change environment
-            >>> config = client.update("api_token", "new-token-456", environment="staging")
+            >>> # Update production config only
+            >>> config = client.update("database", "production", 
+            ...                        {"host": "db-new.prod.com", "port": 5432})
+            >>> # Update with string and category
+            >>> config = client.update("api_token", "staging", "new-token-456", "auth")
         """
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
+        if not environment or not isinstance(environment, str):
+            raise ValueError("Environment is required and must be a non-empty string")
         if category and len(category) > 100:
             raise ValueError("Category must be max 100 characters")
-        if environment and len(environment) > 100:
-            raise ValueError("Environment must be max 100 characters")
 
-        payload = {"value": value, "category": category, "environment": environment}
-        return self._make_request("PUT", f"/configs/{key}", json=payload)
+        payload = {"value": value, "category": category}
+        params = {"environment": environment}
+        return self._make_request("PUT", f"/configs/{key}", json=payload, params=params)
 
-    def delete(self, key: str) -> Dict[str, str]:
+    def delete(self, key: str, environment: str) -> Dict[str, str]:
         """
-        Delete a configuration entry permanently.
+        Delete a configuration entry permanently from specific environment.
 
         Args:
             key: Configuration key to delete
+            environment: Environment identifier (REQUIRED)
 
         Returns:
             Dictionary with success message
 
         Raises:
-            ConfigurationNotFoundError: If configuration key does not exist
-            ValueError: If key is invalid
+            ConfigurationNotFoundError: If configuration (key, environment) does not exist
+            ValueError: If key or environment is invalid
 
         Example:
-            >>> result = client.delete("database")
+            >>> # Delete from staging only
+            >>> result = client.delete("database", "staging")
+            >>> # Production and development environments remain untouched
             >>> print(result["message"])
             Configuration 'database' deleted successfully
         """
         if not key or not isinstance(key, str):
             raise ValueError("Key must be a non-empty string")
+        if not environment or not isinstance(environment, str):
+            raise ValueError("Environment is required and must be a non-empty string")
 
-        return self._make_request("DELETE", f"/configs/{key}")
+        params = {"environment": environment}
+        return self._make_request("DELETE", f"/configs/{key}", params=params)
 
     def list_all(self, category: Optional[str] = None, environment: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -503,10 +531,10 @@ class OpenSecureConfClient:
         Example:
             >>> # List all
             >>> configs = client.list_all()
-            >>> # Filter by category
-            >>> prod_configs = client.list_all(category="production")
             >>> # Filter by environment
-            >>> staging_configs = client.list_all(environment="staging")
+            >>> prod_configs = client.list_all(environment="production")
+            >>> # Filter by category
+            >>> db_configs = client.list_all(category="database")
             >>> # Filter by both
             >>> configs = client.list_all(category="database", environment="production")
         """
@@ -532,7 +560,7 @@ class OpenSecureConfClient:
 
         Args:
             configs: List of configuration dictionaries with 'key', 'value', 
-                    and optional 'category' and 'environment'
+                    'environment' (REQUIRED), and optional 'category'
                     Value can be dict, str, int, bool, or list
             ignore_errors: If True, continue on errors and return partial results
 
@@ -540,17 +568,17 @@ class OpenSecureConfClient:
             List of created configuration dictionaries
 
         Raises:
-            ValueError: If configs format is invalid
+            ValueError: If configs format is invalid or environment is missing
             OpenSecureConfError: If creation fails and ignore_errors is False
 
         Example:
             >>> configs = [
-            ...     {"key": "db1", "value": {"host": "localhost"}, 
-            ...      "category": "db", "environment": "production"},
+            ...     {"key": "db", "value": {"host": "localhost"}, 
+            ...      "environment": "production", "category": "config"},
+            ...     {"key": "db", "value": {"host": "localhost"}, 
+            ...      "environment": "staging", "category": "config"},
             ...     {"key": "token", "value": "secret-123", 
-            ...      "category": "auth", "environment": "staging"},
-            ...     {"key": "retries", "value": 3, 
-            ...      "category": "config", "environment": "production"}
+            ...      "environment": "production", "category": "auth"}
             ... ]
             >>> results = client.bulk_create(configs)
             >>> print(f"Created {len(results)} configurations")
@@ -566,20 +594,28 @@ class OpenSecureConfClient:
                 raise ValueError(f"Config at index {i} must be a dictionary")
             if "key" not in config or "value" not in config:
                 raise ValueError(f"Config at index {i} missing required 'key' or 'value'")
+            if "environment" not in config:
+                raise ValueError(f"Config at index {i} missing required 'environment'")
 
             try:
                 result = self.create(
                     key=config["key"],
                     value=config["value"],
-                    category=config.get("category"),
-                    environment=config.get("environment")
+                    environment=config["environment"],
+                    category=config.get("category")
                 )
                 results.append(result)
-                self.logger.info(f"Bulk create: created '{config['key']}'")
+                self.logger.info(
+                    f"Bulk create: created '{config['key']}' in '{config['environment']}'"
+                )
             except Exception as e:
-                error_msg = f"Failed to create '{config['key']}': {str(e)}"
+                error_msg = f"Failed to create '{config['key']}' in '{config['environment']}': {str(e)}"
                 self.logger.error(error_msg)
-                errors.append({"key": config["key"], "error": str(e)})
+                errors.append({
+                    "key": config["key"], 
+                    "environment": config["environment"],
+                    "error": str(e)
+                })
                 if not ignore_errors:
                     raise OpenSecureConfError(error_msg) from e
 
@@ -590,41 +626,66 @@ class OpenSecureConfClient:
 
     def bulk_read(
         self,
-        keys: List[str],
+        items: List[Dict[str, str]],
         ignore_errors: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Read multiple configurations in batch.
 
         Args:
-            keys: List of configuration keys to retrieve
+            items: List of dictionaries with 'key' and 'environment' fields
             ignore_errors: If True, skip missing keys and return partial results
 
         Returns:
             List of configuration dictionaries
 
+        Raises:
+            ValueError: If items format is invalid
+
         Example:
-            >>> configs = client.bulk_read(["db1", "token", "retries"])
+            >>> items = [
+            ...     {"key": "database", "environment": "production"},
+            ...     {"key": "database", "environment": "staging"},
+            ...     {"key": "api_token", "environment": "production"}
+            ... ]
+            >>> configs = client.bulk_read(items)
             >>> print(f"Retrieved {len(configs)} configurations")
         """
-        if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
+        if not isinstance(items, list):
+            raise ValueError("items must be a list")
 
         results = []
         errors = []
 
-        for key in keys:
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"Item at index {i} must be a dictionary")
+            if "key" not in item or "environment" not in item:
+                raise ValueError(f"Item at index {i} missing required 'key' or 'environment'")
+
             try:
-                result = self.read(key)
+                result = self.read(item["key"], item["environment"])
                 results.append(result)
             except ConfigurationNotFoundError as e:
-                self.logger.warning(f"Bulk read: key '{key}' not found")
-                errors.append({"key": key, "error": str(e)})
+                self.logger.warning(
+                    f"Bulk read: key '{item['key']}' not found in '{item['environment']}'"
+                )
+                errors.append({
+                    "key": item["key"],
+                    "environment": item["environment"],
+                    "error": str(e)
+                })
                 if not ignore_errors:
                     raise
             except Exception as e:
-                self.logger.error(f"Bulk read: failed to read '{key}': {str(e)}")
-                errors.append({"key": key, "error": str(e)})
+                self.logger.error(
+                    f"Bulk read: failed to read '{item['key']}' from '{item['environment']}': {str(e)}"
+                )
+                errors.append({
+                    "key": item["key"],
+                    "environment": item["environment"],
+                    "error": str(e)
+                })
                 if not ignore_errors:
                     raise
 
@@ -632,37 +693,61 @@ class OpenSecureConfClient:
 
     def bulk_delete(
         self,
-        keys: List[str],
+        items: List[Dict[str, str]],
         ignore_errors: bool = False
     ) -> Dict[str, Any]:
         """
         Delete multiple configurations in batch.
 
         Args:
-            keys: List of configuration keys to delete
+            items: List of dictionaries with 'key' and 'environment' fields
             ignore_errors: If True, continue on errors
 
         Returns:
-            Dictionary with summary: {"deleted": [...], "failed": [...]}
+            Dictionary with summary: {
+                "deleted": [{"key": "...", "environment": "..."}],
+                "failed": [{"key": "...", "environment": "...", "error": "..."}]
+            }
+
+        Raises:
+            ValueError: If items format is invalid
 
         Example:
-            >>> result = client.bulk_delete(["temp1", "temp2", "temp3"])
+            >>> items = [
+            ...     {"key": "temp1", "environment": "staging"},
+            ...     {"key": "temp2", "environment": "staging"},
+            ...     {"key": "temp3", "environment": "development"}
+            ... ]
+            >>> result = client.bulk_delete(items)
             >>> print(f"Deleted: {len(result['deleted'])}, Failed: {len(result['failed'])}")
         """
-        if not isinstance(keys, list):
-            raise ValueError("keys must be a list")
+        if not isinstance(items, list):
+            raise ValueError("items must be a list")
 
         deleted = []
         failed = []
 
-        for key in keys:
+        for i, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"Item at index {i} must be a dictionary")
+            if "key" not in item or "environment" not in item:
+                raise ValueError(f"Item at index {i} missing required 'key' or 'environment'")
+
             try:
-                self.delete(key)
-                deleted.append(key)
-                self.logger.info(f"Bulk delete: deleted '{key}'")
+                self.delete(item["key"], item["environment"])
+                deleted.append({"key": item["key"], "environment": item["environment"]})
+                self.logger.info(
+                    f"Bulk delete: deleted '{item['key']}' from '{item['environment']}'"
+                )
             except Exception as e:
-                self.logger.error(f"Bulk delete: failed to delete '{key}': {str(e)}")
-                failed.append({"key": key, "error": str(e)})
+                self.logger.error(
+                    f"Bulk delete: failed to delete '{item['key']}' from '{item['environment']}': {str(e)}"
+                )
+                failed.append({
+                    "key": item["key"],
+                    "environment": item["environment"],
+                    "error": str(e)
+                })
                 if not ignore_errors:
                     raise
 
@@ -672,22 +757,25 @@ class OpenSecureConfClient:
     # UTILITY METHODS
     # ========================================================================
 
-    def exists(self, key: str) -> bool:
+    def exists(self, key: str, environment: str) -> bool:
         """
-        Check if a configuration key exists.
+        Check if a configuration key exists in specific environment.
 
         Args:
             key: Configuration key to check
+            environment: Environment identifier (REQUIRED)
 
         Returns:
-            True if key exists, False otherwise
+            True if key exists in the specified environment, False otherwise
 
         Example:
-            >>> if client.exists("database"):
-            ...     print("Configuration exists")
+            >>> if client.exists("database", "production"):
+            ...     print("Configuration exists in production")
+            >>> if not client.exists("database", "development"):
+            ...     print("Configuration does not exist in development")
         """
         try:
-            self.read(key)
+            self.read(key, environment)
             return True
         except ConfigurationNotFoundError:
             return False
@@ -695,6 +783,7 @@ class OpenSecureConfClient:
     def get_or_default(
         self,
         key: str,
+        environment: str,
         default: Union[Dict[str, Any], str, int, bool, list]
     ) -> Dict[str, Any]:
         """
@@ -702,6 +791,7 @@ class OpenSecureConfClient:
 
         Args:
             key: Configuration key to retrieve
+            environment: Environment identifier (REQUIRED)
             default: Default value to return if key not found (any supported type)
 
         Returns:
@@ -709,14 +799,21 @@ class OpenSecureConfClient:
 
         Example:
             >>> # Dict default
-            >>> config = client.get_or_default("database", {"host": "localhost", "port": 5432})
+            >>> config = client.get_or_default(
+            ...     "database", "production", {"host": "localhost", "port": 5432}
+            ... )
             >>> # String default
-            >>> config = client.get_or_default("token", "default-token")
+            >>> config = client.get_or_default("token", "staging", "default-token")
         """
         try:
-            return self.read(key)
+            return self.read(key, environment)
         except ConfigurationNotFoundError:
-            return {"key": key, "value": default, "category": None, "environment": None}
+            return {
+                "key": key,
+                "value": default,
+                "environment": environment,
+                "category": None
+            }
 
     def count(self, category: Optional[str] = None, environment: Optional[str] = None) -> int:
         """
@@ -766,7 +863,7 @@ class OpenSecureConfClient:
         Example:
             >>> environments = client.list_environments()
             >>> print(f"Environments: {', '.join(environments)}")
-            Environments: production, staging, development
+            Environments: development, production, staging
         """
         configs = self.list_all()
         environments = set()

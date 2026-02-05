@@ -4,7 +4,7 @@
  * A comprehensive REST API client for OpenSecureConf - Encrypted configuration
  * management system with cluster support and HTTPS/SSL.
  * 
- * @version 2.3.3
+ * @version 3.0.0
  * @license MIT
  */
 
@@ -26,7 +26,7 @@ export interface ConfigEntry {
   key: string;
   value: ConfigValue;
   category?: string;
-  environment?: string;
+  environment: string;
 }
 
 /**
@@ -264,93 +264,111 @@ export class OpenSecureConfClient {
    * 
    * @param key - Unique configuration key (1-255 characters)
    * @param value - Configuration value (object, string, number, boolean, or array)
-   * @param options - Optional category and environment
+   * @param environment - Environment identifier (REQUIRED)
+   * @param category - Optional category for grouping
    * 
    * @example
    * // Object value with category and environment
    * await client.create('database', { host: 'localhost', port: 5432 }, 
-   *                     { category: 'config', environment: 'production' });
+   *                     'production', 'config');
    * 
    * @example
-   * // String value with environment only
-   * await client.create('api_token', 'secret-token-123', 
-   *                     { environment: 'staging' });
-   * 
-   * @example
-   * // Number value with category
-   * await client.create('max_retries', 3, { category: 'settings' });
-   * 
-   * @example
-   * // Boolean without options
-   * await client.create('debug_enabled', false);
+   * // Same key in different environments
+   * await client.create('api_url', 'https://api.prod.com', 'production');
+   * await client.create('api_url', 'https://api.staging.com', 'staging');
    */
   async create(
     key: string, 
     value: ConfigValue, 
-    options?: { category?: string; environment?: string }
+    environment: string, // Ora obbligatorio
+    category?: string
   ): Promise<ConfigEntry> {
     return this.request('POST', '/configs', {
       key,
       value,
-      category: options?.category,
-      environment: options?.environment,
+      environment,
+      category,
     });
   }
 
   /**
-   * Read a configuration entry by key
+   * Read a configuration entry by key and environment
    * 
    * @param key - Configuration key to retrieve
+   * @param environment - Environment identifier (REQUIRED)
    * @returns Configuration entry with decrypted value (type preserved)
    * 
    * @example
-   * const config = await client.read('database');
-   * console.log(config.value);       // { host: 'localhost', port: 5432 }
-   * console.log(config.environment); // 'production'
-   * console.log(config.category);    // 'config'
+   * const prodConfig = await client.read('database', 'production');
+   * const stagingConfig = await client.read('database', 'staging');
+   * console.log(prodConfig.value);    // Different from staging
+   * console.log(prodConfig.environment); // 'production'
    */
-  async read(key: string): Promise<ConfigEntry> {
-    return this.request('GET', `/configs/${encodeURIComponent(key)}`);
+  async read(key: string, environment: string): Promise<ConfigEntry> {
+  if (!environment || environment.trim().length === 0) {
+    throw new Error('environment is required');
   }
+
+    const params = new URLSearchParams({ environment });
+    return this.request('GET', `/configs/${encodeURIComponent(key)}?${params.toString()}`);
+  }
+
 
   /**
    * Update an existing configuration entry
    * 
    * @param key - Configuration key to update
-   * @param value - New configuration value (object, string, number, boolean, or array)
-   * @param options - Optional new category and environment
+   * @param environment - Environment identifier (REQUIRED, cannot be changed)
+   * @param value - New configuration value
+   * @param category - Optional new category
    * 
    * @example
-   * // Update value and environment
-   * await client.update('database', { host: 'db.example.com', port: 5432 },
-   *                     { environment: 'production' });
+   * // Update value in specific environment
+   * await client.update('database', 'production', 
+   *                     { host: 'db.prod.com', port: 5432 });
    * 
    * @example
-   * // Update only value
-   * await client.update('api_token', 'new-token-456');
-   * 
-   * @example
-   * // Change category and environment
-   * await client.update('setting', 100, 
-   *                     { category: 'config', environment: 'staging' });
+   * // Update with new category
+   * await client.update('api_token', 'staging', 'new-token-456', 'auth');
    */
   async update(
     key: string, 
+    environment: string,
     value: ConfigValue, 
-    options?: { category?: string; environment?: string }
+    category: string  
   ): Promise<ConfigEntry> {
-    return this.request('PUT', `/configs/${encodeURIComponent(key)}`, {
+  if (!environment || environment.trim().length === 0) {
+      throw new Error('environment is required');
+    }
+
+    const params = new URLSearchParams({ environment });
+    return this.request('PUT', `/configs/${encodeURIComponent(key)}?${params.toString()}`, {
       value,
-      category: options?.category,
-      environment: options?.environment,
+      category,
     });
   }
 
   /**
    * Delete a configuration entry
+   * 
+   * @param key - Configuration key to delete
+   * @param environment - Environment identifier (REQUIRED)
+   * 
+   * @example
+   * // Delete configuration in specific environment
+   * await client.delete('database', 'production');
+   * // The same key in 'staging' environment remains untouched
    */
-  async delete(key: string): Promise<{ message: string }> {
-    return this.request<{ message: string }>('DELETE', `/configs/${encodeURIComponent(key)}`);
+  async delete(key: string, environment: string): Promise<{ message: string }> {
+    if (!environment || environment.trim().length === 0) {
+      throw new Error('environment is required');
+    }
+
+    const params = new URLSearchParams({ environment });
+    return this.request<{ message: string }>(
+      'DELETE', 
+      `/configs/${encodeURIComponent(key)}?${params.toString()}`
+    );
   }
 
   /**
@@ -379,17 +397,22 @@ export class OpenSecureConfClient {
    */
   async list(options?: { category?: string; environment?: string }): Promise<ConfigEntry[]> {
     const params = new URLSearchParams();
+    
     if (options?.category) {
       params.append('category', options.category);
     }
     if (options?.environment) {
       params.append('environment', options.environment);
     }
+    
+    // Aggiungi mode=full per ottenere i valori completi
+    params.append('mode', 'full');
 
     const queryString = params.toString();
-    const endpoint = queryString ? `/configs?${queryString}` : '/configs';
+    const endpoint = `/configs?${queryString}`;
     return this.request('GET', endpoint);
   }
+
 
   /**
    * Get cluster status
@@ -436,11 +459,18 @@ export class OpenSecureConfClient {
   }
 
   /**
-   * Check if configuration key exists
+   * Check if configuration key exists in specific environment
+   * 
+   * @param key - Configuration key
+   * @param environment - Environment identifier (REQUIRED)
+   * 
+   * @example
+   * const existsInProd = await client.exists('database', 'production');
+   * const existsInStaging = await client.exists('database', 'staging');
    */
-  async exists(key: string): Promise<boolean> {
+  async exists(key: string, environment: string): Promise<boolean> {
     try {
-      await this.read(key);
+      await this.read(key, environment);
       return true;
     } catch (error) {
       if (error instanceof OpenSecureConfError && error.statusCode === 404) {
@@ -511,15 +541,14 @@ export class OpenSecureConfClient {
   /**
    * Bulk create configurations
    * 
-   * @param configs - Array of configurations to create (supports mixed value types)
+   * @param configs - Array of configurations to create (environment is REQUIRED)
    * @param ignoreErrors - If true, continue on errors and return partial results
    * 
    * @example
    * const configs = [
-   *   { key: 'db_host', value: 'localhost', category: 'db', environment: 'prod' },
-   *   { key: 'db_port', value: 5432, category: 'db', environment: 'prod' },
-   *   { key: 'use_ssl', value: true, category: 'security', environment: 'prod' },
-   *   { key: 'api_token', value: 'secret-123', category: 'auth', environment: 'staging' }
+   *   { key: 'db_host', value: 'localhost', environment: 'production', category: 'db' },
+   *   { key: 'db_host', value: 'localhost', environment: 'staging', category: 'db' },
+   *   { key: 'db_port', value: 5432, environment: 'production', category: 'db' }
    * ];
    * const results = await client.bulkCreate(configs);
    */
@@ -527,8 +556,8 @@ export class OpenSecureConfClient {
     configs: Array<{ 
       key: string; 
       value: ConfigValue; 
+      environment: string; // Ora obbligatorio
       category?: string;
-      environment?: string;
     }>,
     ignoreErrors: boolean = false
   ): Promise<ConfigEntry[]> {
@@ -536,14 +565,21 @@ export class OpenSecureConfClient {
     const errors: any[] = [];
 
     for (const config of configs) {
+      if (!config.environment || config.environment.trim().length === 0) {
+        const error = new Error(`environment is required for key '${config.key}'`);
+        errors.push({ key: config.key, error });
+        if (!ignoreErrors) {
+          throw error;
+        }
+        continue;
+      }
+
       try {
         const result = await this.create(
           config.key, 
           config.value, 
-          { 
-            category: config.category,
-            environment: config.environment 
-          }
+          config.environment,
+          config.category
         );
         results.push(result);
       } catch (error) {
@@ -557,19 +593,43 @@ export class OpenSecureConfClient {
     return results;
   }
 
+
   /**
    * Bulk read configurations
+   * 
+   * @param items - Array of {key, environment} pairs
+   * @param ignoreErrors - If true, continue on errors
+   * 
+   * @example
+   * const items = [
+   *   { key: 'database', environment: 'production' },
+   *   { key: 'database', environment: 'staging' },
+   *   { key: 'api_url', environment: 'production' }
+   * ];
+   * const results = await client.bulkRead(items);
    */
-  async bulkRead(keys: string[], ignoreErrors: boolean = false): Promise<ConfigEntry[]> {
+  async bulkRead(
+    items: Array<{ key: string; environment: string }>, 
+    ignoreErrors: boolean = false
+  ): Promise<ConfigEntry[]> {
     const results: ConfigEntry[] = [];
     const errors: any[] = [];
 
-    for (const key of keys) {
+    for (const item of items) {
+      if (!item.environment || item.environment.trim().length === 0) {
+        const error = new Error(`environment is required for key '${item.key}'`);
+        errors.push({ key: item.key, error });
+        if (!ignoreErrors) {
+          throw error;
+        }
+        continue;
+      }
+
       try {
-        const result = await this.read(key);
+        const result = await this.read(item.key, item.environment);
         results.push(result);
       } catch (error) {
-        errors.push({ key, error });
+        errors.push({ key: item.key, environment: item.environment, error });
         if (!ignoreErrors) {
           throw error;
         }
@@ -579,22 +639,47 @@ export class OpenSecureConfClient {
     return results;
   }
 
+
   /**
    * Bulk delete configurations
+   * 
+   * @param items - Array of {key, environment} pairs
+   * @param ignoreErrors - If true, continue on errors
+   * 
+   * @example
+   * const items = [
+   *   { key: 'database', environment: 'staging' },
+   *   { key: 'api_url', environment: 'staging' }
+   * ];
+   * const result = await client.bulkDelete(items);
+   * console.log(result.deleted);  // Successfully deleted items
+   * console.log(result.failed);   // Failed items with errors
    */
   async bulkDelete(
-    keys: string[],
+    items: Array<{ key: string; environment: string }>,
     ignoreErrors: boolean = false
-  ): Promise<{ deleted: string[]; failed: Array<{ key: string; error: any }> }> {
-    const deleted: string[] = [];
-    const failed: Array<{ key: string; error: any }> = [];
+  ): Promise<{ 
+    deleted: Array<{ key: string; environment: string }>; 
+    failed: Array<{ key: string; environment: string; error: any }> 
+  }> {
+    const deleted: Array<{ key: string; environment: string }> = [];
+    const failed: Array<{ key: string; environment: string; error: any }> = [];
 
-    for (const key of keys) {
+    for (const item of items) {
+      if (!item.environment || item.environment.trim().length === 0) {
+        const error = new Error(`environment is required for key '${item.key}'`);
+        failed.push({ key: item.key, environment: item.environment, error });
+        if (!ignoreErrors) {
+          throw error;
+        }
+        continue;
+      }
+
       try {
-        await this.delete(key);
-        deleted.push(key);
+        await this.delete(item.key, item.environment);
+        deleted.push({ key: item.key, environment: item.environment });
       } catch (error) {
-        failed.push({ key, error });
+        failed.push({ key: item.key, environment: item.environment, error });
         if (!ignoreErrors) {
           throw error;
         }
@@ -603,6 +688,7 @@ export class OpenSecureConfClient {
 
     return { deleted, failed };
   }
+
     /**
    * Create an encrypted backup of all configurations
    * 

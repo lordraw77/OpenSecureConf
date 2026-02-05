@@ -28,16 +28,17 @@ describe('OpenSecureConfClient', () => {
 
   describe('CRUD operations', () => {
     const testKey = 'test-config-key';
-    const testValue = { setting: 'value', number: 42 };
+    const testValue = { setting: 'value', number: 42};
+    const testEnvironment = 'test-env';
 
     it('should create a configuration', async () => {
-      const result = await client.create(testKey, testValue, 'test-category');
+      const result = await client.create(testKey, testValue, testEnvironment, 'test-category');
       expect(result).toHaveProperty('key', testKey);
       expect(result).toHaveProperty('value');
     });
 
     it('should read a configuration', async () => {
-      const result = await client.read(testKey);
+      const result = await client.read(testKey,testEnvironment);
       expect(result).toHaveProperty('key', testKey);
     });
 
@@ -47,7 +48,7 @@ describe('OpenSecureConfClient', () => {
     });
 
     it('should delete a configuration', async () => {
-      const result = await client.delete(testKey);
+      const result = await client.delete(testKey,testEnvironment);
       expect(result).toHaveProperty('message');
     });
   });

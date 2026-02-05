@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/opensecureconf-client.svg)](https://pypi.org/project/opensecureconf-client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful Python client library for interacting with the [OpenSecureConf API](https://github.com/lordraw77/OpenSecureConf), providing encrypted configuration management with clustering support, automatic retry logic, and comprehensive monitoring capabilities.
+A powerful Python client library for interacting with the [OpenSecureConf API](https://github.com/lordraw77/OpenSecureConf), providing encrypted configuration management with clustering support, automatic retry logic, multi-environment support, and comprehensive monitoring capabilities.
 
 ## 📋 Table of Contents
 
@@ -12,6 +12,7 @@ A powerful Python client library for interacting with the [OpenSecureConf API](h
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Core Features](#core-features)
+  - [Multi-Environment Support](#multi-environment-support)
   - [Basic CRUD Operations](#basic-crud-operations)
   - [Cluster Awareness](#cluster-awareness)
   - [Batch Operations](#batch-operations)
@@ -31,6 +32,7 @@ A powerful Python client library for interacting with the [OpenSecureConf API](h
 
 ### Core Capabilities
 - 🔐 **Encrypted Configuration Management**: Securely store and retrieve encrypted configurations using PBKDF2 + Fernet
+- 🌍 **Multi-Environment Support**: Same configuration key across different environments (production, staging, development)
 - 🚀 **Simple & Intuitive API**: Clean interface for CRUD operations
 - 🛡️ **Type-Safe**: Fully typed with comprehensive error handling
 - 📦 **Lightweight**: Minimal dependencies (only `requests` and `urllib3`)
@@ -81,34 +83,82 @@ client = OpenSecureConfClient(
     api_key="cluster-secret-key-123"  # Optional: if API key authentication is enabled
 )
 
-# Create a configuration
+# Create a configuration (environment is REQUIRED)
 config = client.create(
     key="database",
     value={"host": "localhost", "port": 5432, "username": "admin", "password": "secret"},
-    category="production"
+    environment="production",  # REQUIRED
+    category="config"
 )
-print(f"Created: {config['key']}")
+print(f"Created: {config['key']} in {config['environment']}")
 
-# Read a configuration
-db_config = client.read("database")
+# Read a configuration (environment is REQUIRED)
+db_config = client.read("database", "production")
 print(f"Host: {db_config['value']['host']}")
 
-# Update a configuration
+# Update a configuration (environment is REQUIRED)
 updated = client.update(
     key="database",
+    environment="production",  # REQUIRED
     value={"host": "db.example.com", "port": 5432, "username": "admin", "password": "secret"}
 )
 
-# List all configurations
-configs = client.list_all(category="production")
+# List all production configurations
+configs = client.list_all(environment="production")
 for cfg in configs:
-    print(f"- {cfg['key']}: {cfg['category']}")
+    print(f"- {cfg['key']}: {cfg['environment']}")
 
-# Delete a configuration
-client.delete("database")
+# Delete a configuration (environment is REQUIRED)
+client.delete("database", "production")
 
 # Close the client
 client.close()
+```
+
+### Multi-Environment Configuration
+
+```python
+from opensecureconf_client import OpenSecureConfClient
+
+with OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-secure-key-min-8-chars"
+) as client:
+    # Create same key in different environments
+    prod_db = client.create(
+        "database",
+        {"host": "db.prod.com", "port": 5432},
+        "production",
+        "config"
+    )
+    
+    staging_db = client.create(
+        "database",
+        {"host": "db.staging.com", "port": 5432},
+        "staging",
+        "config"
+    )
+    
+    dev_db = client.create(
+        "database",
+        {"host": "localhost", "port": 5432},
+        "development",
+        "config"
+    )
+    
+    # Read from specific environment
+    prod_config = client.read("database", "production")
+    staging_config = client.read("database", "staging")
+    
+    print(f"Production: {prod_config['value']['host']}")
+    print(f"Staging: {staging_config['value']['host']}")
+    
+    # Update only staging
+    client.update("database", "staging", {"host": "db-new.staging.com", "port": 5432})
+    
+    # Delete only development
+    client.delete("database", "development")
+    # Production and staging remain untouched
 ```
 
 ### Using Context Manager (Recommended)
@@ -121,7 +171,7 @@ with OpenSecureConfClient(
     user_key="my-secure-key-min-8-chars"
 ) as client:
     # Create and use configurations
-    config = client.create("app", {"version": "1.0.0", "debug": False})
+    config = client.create("app", {"version": "1.0.0", "debug": False}, "production")
     print(config)
     # Session automatically closed when exiting context
 ```
@@ -149,33 +199,78 @@ client = OpenSecureConfClient(
 
 ## 🎯 Core Features
 
+### Multi-Environment Support
+
+OpenSecureConf now supports having the same configuration key in different environments, allowing you to maintain separate configurations for production, staging, development, etc.
+
+```python
+# Create same key in multiple environments
+environments = ["production", "staging", "development"]
+configs = {
+    "production": {"host": "db.prod.com", "port": 5432, "ssl": True},
+    "staging": {"host": "db.staging.com", "port": 5432, "ssl": True},
+    "development": {"host": "localhost", "port": 5432, "ssl": False}
+}
+
+for env in environments:
+    client.create("database", configs[env], env, "config")
+
+# Read from specific environment
+prod_db = client.read("database", "production")
+dev_db = client.read("database", "development")
+
+print(f"Production uses: {prod_db['value']['host']}")
+print(f"Development uses: {dev_db['value']['host']}")
+
+# List all environments
+all_environments = client.list_environments()
+print(f"Available environments: {', '.join(all_environments)}")
+
+# List configurations for specific environment
+prod_configs = client.list_all(environment="production")
+print(f"Production has {len(prod_configs)} configurations")
+
+# Update only in specific environment
+client.update("database", "staging", {"host": "db-v2.staging.com", "port": 5433})
+
+# Delete from specific environment
+client.delete("database", "development")
+# Production and staging remain untouched
+```
+
 ### Basic CRUD Operations
 
 #### Create Configuration
 
 ```python
-# Create a simple configuration
+# Create a configuration (environment is REQUIRED)
 config = client.create(
     key="api_settings",
     value={"base_url": "https://api.example.com", "timeout": 30, "retries": 3},
-    category="production"
+    environment="production",  # REQUIRED
+    category="config"
 )
 
 # Create with validation
-if not client.exists("api_settings"):
-    config = client.create("api_settings", {"base_url": "https://api.example.com"})
+if not client.exists("api_settings", "production"):
+    config = client.create(
+        "api_settings",
+        {"base_url": "https://api.example.com"},
+        "production"
+    )
 ```
 
 #### Read Configuration
 
 ```python
-# Read a specific configuration
-config = client.read("api_settings")
+# Read a specific configuration (environment is REQUIRED)
+config = client.read("api_settings", "production")
 print(f"API URL: {config['value']['base_url']}")
 
 # Safe read with default value
 config = client.get_or_default(
     "optional_setting",
+    "production",
     default={"enabled": False, "timeout": 30}
 )
 ```
@@ -183,24 +278,25 @@ config = client.get_or_default(
 #### Update Configuration
 
 ```python
-# Update existing configuration
+# Update existing configuration (environment is REQUIRED)
 updated = client.update(
     key="api_settings",
+    environment="production",  # REQUIRED, cannot be changed
     value={"base_url": "https://api.example.com", "timeout": 60, "retries": 5},
-    category="production"
+    category="config"
 )
 ```
 
 #### Delete Configuration
 
 ```python
-# Delete a single configuration
-result = client.delete("api_settings")
+# Delete a configuration (environment is REQUIRED)
+result = client.delete("api_settings", "production")
 print(result["message"])
 
 # Conditional delete
-if client.exists("temporary_config"):
-    client.delete("temporary_config")
+if client.exists("temporary_config", "staging"):
+    client.delete("temporary_config", "staging")
 ```
 
 #### List Configurations
@@ -210,14 +306,20 @@ if client.exists("temporary_config"):
 all_configs = client.list_all()
 print(f"Total configurations: {len(all_configs)}")
 
-# List by category
-prod_configs = client.list_all(category="production")
+# List by environment
+prod_configs = client.list_all(environment="production")
 for config in prod_configs:
     print(f"- {config['key']}: {config['value']}")
 
+# List by category
+db_configs = client.list_all(category="database")
+
+# List by both environment and category
+prod_db_configs = client.list_all(category="database", environment="production")
+
 # Get count
 total = client.count()
-prod_count = client.count(category="production")
+prod_count = client.count(environment="production")
 print(f"Production configs: {prod_count}/{total}")
 ```
 
@@ -251,21 +353,24 @@ Perform multiple operations efficiently:
 #### Bulk Create
 
 ```python
-# Create multiple configurations at once
+# Create multiple configurations at once (environment REQUIRED for each)
 configs_to_create = [
     {
         "key": "service1",
         "value": {"url": "http://service1.local", "timeout": 30},
+        "environment": "production",  # REQUIRED
+        "category": "microservices"
+    },
+    {
+        "key": "service1",
+        "value": {"url": "http://service1.staging.local", "timeout": 30},
+        "environment": "staging",  # REQUIRED (same key, different environment)
         "category": "microservices"
     },
     {
         "key": "service2",
         "value": {"url": "http://service2.local", "timeout": 60},
-        "category": "microservices"
-    },
-    {
-        "key": "service3",
-        "value": {"url": "http://service3.local", "timeout": 45},
+        "environment": "production",  # REQUIRED
         "category": "microservices"
     }
 ]
@@ -282,35 +387,44 @@ print(f"Created {len(results)} configurations")
 #### Bulk Read
 
 ```python
-# Read multiple configurations at once
-keys = ["service1", "service2", "service3", "api_settings"]
+# Read multiple configurations at once (environment REQUIRED for each)
+items = [
+    {"key": "service1", "environment": "production"},
+    {"key": "service1", "environment": "staging"},
+    {"key": "service2", "environment": "production"},
+    {"key": "api_settings", "environment": "production"}
+]
 
 # Read all (stop on first error)
-configs = client.bulk_read(keys)
+configs = client.bulk_read(items)
 
 # Read all (skip missing keys)
-configs = client.bulk_read(keys, ignore_errors=True)
+configs = client.bulk_read(items, ignore_errors=True)
 for config in configs:
-    print(f"{config['key']}: {config['value']['url']}")
+    print(f"{config['key']} ({config['environment']}): {config['value']}")
 ```
 
 #### Bulk Delete
 
 ```python
-# Delete multiple configurations
-keys_to_delete = ["temp1", "temp2", "temp3"]
+# Delete multiple configurations (environment REQUIRED for each)
+items_to_delete = [
+    {"key": "temp1", "environment": "staging"},
+    {"key": "temp2", "environment": "staging"},
+    {"key": "temp3", "environment": "development"}
+]
 
 # Delete all (stop on first error)
-result = client.bulk_delete(keys_to_delete)
+result = client.bulk_delete(items_to_delete)
 
 # Delete all (continue on errors)
-result = client.bulk_delete(keys_to_delete, ignore_errors=True)
+result = client.bulk_delete(items_to_delete, ignore_errors=True)
 print(f"Deleted: {len(result['deleted'])}")
 print(f"Failed: {len(result['failed'])}")
 
 # Inspect failures
 for failure in result['failed']:
-    print(f"Failed to delete '{failure['key']}': {failure['error']}")
+    print(f"Failed to delete '{failure['key']}' from '{failure['environment']}': {failure['error']}")
 ```
 
 ### Retry Logic
@@ -330,7 +444,7 @@ client = OpenSecureConfClient(
 
 # Automatic retry on transient failures (429, 500, 502, 503, 504)
 try:
-    config = client.read("my_config")
+    config = client.read("my_config", "production")
 except Exception as e:
     print(f"Failed after {client.max_retries} retries: {e}")
 ```
@@ -371,21 +485,22 @@ Convenient helper methods:
 #### Check Existence
 
 ```python
-# Check if a key exists
-if client.exists("database"):
-    print("Configuration exists")
-    config = client.read("database")
+# Check if a key exists in specific environment
+if client.exists("database", "production"):
+    print("Configuration exists in production")
+    config = client.read("database", "production")
 else:
-    print("Configuration does not exist")
-    config = client.create("database", {"host": "localhost"})
+    print("Configuration does not exist in production")
+    config = client.create("database", {"host": "localhost"}, "production")
 ```
 
 #### Get with Default
 
 ```python
-# Get configuration or return default
+# Get configuration or return default (environment REQUIRED)
 config = client.get_or_default(
     "optional_feature",
+    "production",
     default={"enabled": False, "timeout": 30}
 )
 
@@ -401,23 +516,33 @@ if config['value']['enabled']:
 total = client.count()
 print(f"Total configurations: {total}")
 
+# Count by environment
+prod_count = client.count(environment="production")
+staging_count = client.count(environment="staging")
+print(f"Production: {prod_count}, Staging: {staging_count}")
+
 # Count by category
-prod_count = client.count(category="production")
-dev_count = client.count(category="development")
-print(f"Production: {prod_count}, Development: {dev_count}")
+db_count = client.count(category="database")
+
+# Count by both
+prod_db_count = client.count(category="database", environment="production")
 ```
 
-#### List Categories
+#### List Categories and Environments
 
 ```python
 # Get all unique categories
 categories = client.list_categories()
 print(f"Available categories: {', '.join(categories)}")
 
-# Process by category
-for category in categories:
-    count = client.count(category=category)
-    print(f"{category}: {count} configurations")
+# Get all unique environments
+environments = client.list_environments()
+print(f"Available environments: {', '.join(environments)}")
+
+# Process by environment
+for env in environments:
+    count = client.count(environment=env)
+    print(f"{env}: {count} configurations")
 ```
 
 ## 🔧 Advanced Usage
@@ -455,8 +580,8 @@ client = OpenSecureConfClient(
 )
 
 # All operations will be logged
-config = client.create("test", {"data": "value"})
-# Output: 2026-01-14 17:00:00 - opensecureconf_client - INFO - POST /configs - Status: 201 - Duration: 0.045s
+config = client.create("test", {"data": "value"}, "production")
+# Output: 2026-02-05 12:00:00 - opensecureconf_client - INFO - POST /configs - Status: 201 - Duration: 0.045s
 ```
 
 ### SSL Configuration
@@ -499,6 +624,53 @@ client = OpenSecureConfClient(
 )
 ```
 
+### Working with Multiple Environments
+
+```python
+from opensecureconf_client_enhanced import OpenSecureConfClient
+
+with OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-key"
+) as client:
+    # Define configurations for different environments
+    environments = {
+        "production": {
+            "database": {"host": "db.prod.com", "port": 5432, "ssl": True},
+            "api_url": "https://api.prod.com",
+            "debug": False
+        },
+        "staging": {
+            "database": {"host": "db.staging.com", "port": 5432, "ssl": True},
+            "api_url": "https://api.staging.com",
+            "debug": True
+        },
+        "development": {
+            "database": {"host": "localhost", "port": 5432, "ssl": False},
+            "api_url": "http://localhost:3000",
+            "debug": True
+        }
+    }
+    
+    # Create configurations for all environments
+    for env_name, configs in environments.items():
+        for key, value in configs.items():
+            client.create(key, value, env_name, "config")
+            print(f"Created {key} for {env_name}")
+    
+    # Read environment-specific configuration
+    prod_db = client.read("database", "production")
+    print(f"Production database: {prod_db['value']['host']}")
+    
+    # Update only staging environment
+    client.update("api_url", "staging", "https://api-v2.staging.com")
+    
+    # Delete development configurations
+    dev_configs = client.list_all(environment="development")
+    for config in dev_configs:
+        client.delete(config['key'], "development")
+```
+
 ### Working with Clusters
 
 ```python
@@ -517,11 +689,11 @@ print(f"Connected to: {status['node_id']}")
 print(f"Cluster mode: {status['mode']}")
 
 # In REPLICA mode: writes are automatically replicated
-config = client.create("shared_config", {"data": "value"})
+config = client.create("shared_config", {"data": "value"}, "production")
 # This configuration is now available on all nodes
 
 # In FEDERATED mode: reads check all nodes
-config = client.read("distributed_config")
+config = client.read("distributed_config", "production")
 # This searches across all federated nodes
 
 # Monitor cluster health
@@ -571,166 +743,113 @@ OpenSecureConfClient(
 
 #### Methods
 
-##### Health & Status
-
-###### `ping() -> bool`
-
-Check if the API server is reachable.
-
-**Returns:** `True` if server is healthy, `False` otherwise
-
-**Example:**
-```python
-if client.ping():
-    print("Server is online")
-```
-
-###### `get_service_info() -> Dict[str, Any]`
-
-Get information about the OpenSecureConf service.
-
-**Returns:** Dictionary with service metadata
-- `service`: Service name
-- `version`: API version
-- `features`: List of enabled features
-- `cluster_enabled`: Whether clustering is enabled
-- `cluster_mode`: Cluster mode (if enabled)
-
-**Example:**
-```python
-info = client.get_service_info()
-print(f"Version: {info['version']}")
-```
-
-##### Cluster Operations
-
-###### `get_cluster_status() -> Dict[str, Any]`
-
-Get cluster status and node information.
-
-**Returns:** Dictionary with cluster status
-- `enabled`: Whether clustering is enabled
-- `mode`: Cluster mode (replica or federated)
-- `node_id`: Current node identifier
-- `total_nodes`: Total number of nodes
-- `healthy_nodes`: Number of healthy nodes
-
-**Raises:** `ClusterError` if cluster status cannot be retrieved
-
-**Example:**
-```python
-status = client.get_cluster_status()
-print(f"Healthy: {status['healthy_nodes']}/{status['total_nodes']}")
-```
-
-###### `get_cluster_health() -> Dict[str, Any]`
-
-Check cluster node health.
-
-**Returns:** Dictionary with health status
-
-**Example:**
-```python
-health = client.get_cluster_health()
-print(f"Status: {health['status']}")
-```
-
 ##### Configuration CRUD
 
-###### `create(key: str, value: Dict[str, Any], category: Optional[str] = None) -> Dict[str, Any]`
+###### `create(key: str, value: Union[Dict, str, int, bool, list], environment: str, category: Optional[str] = None) -> Dict[str, Any]`
 
 Create a new encrypted configuration entry.
 
 **Parameters:**
-- `key`: Unique configuration key (1-255 characters)
-- `value`: Configuration data as dictionary
+- `key`: Configuration key (1-255 characters)
+- `value`: Configuration data (dict, string, int, bool, or list)
+- `environment`: Environment identifier (REQUIRED, max 100 characters)
 - `category`: Optional category for grouping (max 100 characters)
 
 **Returns:** Dictionary with created configuration
 
 **Raises:**
-- `ConfigurationExistsError`: If key already exists
+- `ConfigurationExistsError`: If (key, environment) already exists
 - `ValueError`: If parameters are invalid
 
 **Example:**
 ```python
-config = client.create(
-    "database",
-    {"host": "localhost", "port": 5432},
-    category="production"
-)
+# Same key in different environments
+prod_config = client.create("database", {"host": "db.prod.com"}, "production", "config")
+staging_config = client.create("database", {"host": "db.staging.com"}, "staging", "config")
 ```
 
-###### `read(key: str) -> Dict[str, Any]`
+###### `read(key: str, environment: str) -> Dict[str, Any]`
 
-Read and decrypt a configuration entry.
+Read and decrypt a configuration entry by key and environment.
 
 **Parameters:**
 - `key`: Configuration key to retrieve
+- `environment`: Environment identifier (REQUIRED)
 
 **Returns:** Dictionary with configuration
 
 **Raises:**
-- `ConfigurationNotFoundError`: If key does not exist
-- `ValueError`: If key is invalid
+- `ConfigurationNotFoundError`: If (key, environment) does not exist
+- `ValueError`: If parameters are invalid
 
 **Example:**
 ```python
-config = client.read("database")
-print(config['value'])
+prod_config = client.read("database", "production")
+staging_config = client.read("database", "staging")
 ```
 
-###### `update(key: str, value: Dict[str, Any], category: Optional[str] = None) -> Dict[str, Any]`
+###### `update(key: str, environment: str, value: Union[Dict, str, int, bool, list], category: Optional[str] = None) -> Dict[str, Any]`
 
 Update an existing configuration entry.
 
 **Parameters:**
 - `key`: Configuration key to update
+- `environment`: Environment identifier (REQUIRED, cannot be changed)
 - `value`: New configuration data
 - `category`: Optional new category
 
 **Returns:** Dictionary with updated configuration
 
 **Raises:**
-- `ConfigurationNotFoundError`: If key does not exist
+- `ConfigurationNotFoundError`: If (key, environment) does not exist
 - `ValueError`: If parameters are invalid
 
 **Example:**
 ```python
-updated = client.update("database", {"host": "db.example.com", "port": 5432})
+updated = client.update("database", "production", {"host": "db-new.prod.com"})
 ```
 
-###### `delete(key: str) -> Dict[str, str]`
+###### `delete(key: str, environment: str) -> Dict[str, str]`
 
-Delete a configuration entry permanently.
+Delete a configuration entry permanently from specific environment.
 
 **Parameters:**
 - `key`: Configuration key to delete
+- `environment`: Environment identifier (REQUIRED)
 
 **Returns:** Dictionary with success message
 
 **Raises:**
-- `ConfigurationNotFoundError`: If key does not exist
-- `ValueError`: If key is invalid
+- `ConfigurationNotFoundError`: If (key, environment) does not exist
+- `ValueError`: If parameters are invalid
 
 **Example:**
 ```python
-result = client.delete("database")
-print(result['message'])
+# Delete from staging only
+result = client.delete("database", "staging")
+# Production remains untouched
 ```
 
-###### `list_all(category: Optional[str] = None) -> List[Dict[str, Any]]`
+###### `list_all(category: Optional[str] = None, environment: Optional[str] = None) -> List[Dict[str, Any]]`
 
-List all configurations with optional category filter.
+List all configurations with optional filters.
 
 **Parameters:**
 - `category`: Optional category filter
+- `environment`: Optional environment filter
 
 **Returns:** List of configuration dictionaries
 
 **Example:**
 ```python
-configs = client.list_all(category="production")
+# List all production configurations
+prod_configs = client.list_all(environment="production")
+
+# List all database configurations
+db_configs = client.list_all(category="database")
+
+# List production database configurations
+configs = client.list_all(category="database", environment="production")
 ```
 
 ##### Batch Operations
@@ -740,100 +859,110 @@ configs = client.list_all(category="production")
 Create multiple configurations in batch.
 
 **Parameters:**
-- `configs`: List of configuration dictionaries
+- `configs`: List of configuration dictionaries with 'key', 'value', 'environment' (REQUIRED), and optional 'category'
 - `ignore_errors`: Continue on errors and return partial results
 
 **Returns:** List of created configurations
 
 **Raises:**
-- `ValueError`: If configs format is invalid
+- `ValueError`: If configs format is invalid or environment is missing
 - `OpenSecureConfError`: If creation fails and ignore_errors is False
 
 **Example:**
 ```python
 configs = [
-    {"key": "db1", "value": {"host": "localhost"}, "category": "prod"},
-    {"key": "db2", "value": {"host": "remote"}, "category": "prod"}
+    {"key": "db", "value": {"host": "localhost"}, "environment": "production", "category": "config"},
+    {"key": "db", "value": {"host": "localhost"}, "environment": "staging", "category": "config"}
 ]
 results = client.bulk_create(configs)
 ```
 
-###### `bulk_read(keys: List[str], ignore_errors: bool = False) -> List[Dict[str, Any]]`
+###### `bulk_read(items: List[Dict[str, str]], ignore_errors: bool = False) -> List[Dict[str, Any]]`
 
 Read multiple configurations in batch.
 
 **Parameters:**
-- `keys`: List of configuration keys
+- `items`: List of dictionaries with 'key' and 'environment' fields
 - `ignore_errors`: Skip missing keys and return partial results
 
 **Returns:** List of configuration dictionaries
 
 **Example:**
 ```python
-configs = client.bulk_read(["db1", "db2", "api"])
+items = [
+    {"key": "database", "environment": "production"},
+    {"key": "database", "environment": "staging"}
+]
+configs = client.bulk_read(items)
 ```
 
-###### `bulk_delete(keys: List[str], ignore_errors: bool = False) -> Dict[str, Any]`
+###### `bulk_delete(items: List[Dict[str, str]], ignore_errors: bool = False) -> Dict[str, Any]`
 
 Delete multiple configurations in batch.
 
 **Parameters:**
-- `keys`: List of configuration keys
+- `items`: List of dictionaries with 'key' and 'environment' fields
 - `ignore_errors`: Continue on errors
 
 **Returns:** Dictionary with summary: `{"deleted": [...], "failed": [...]}`
 
 **Example:**
 ```python
-result = client.bulk_delete(["temp1", "temp2", "temp3"])
-print(f"Deleted: {len(result['deleted'])}")
+items = [
+    {"key": "temp1", "environment": "staging"},
+    {"key": "temp2", "environment": "staging"}
+]
+result = client.bulk_delete(items)
 ```
 
 ##### Utility Methods
 
-###### `exists(key: str) -> bool`
+###### `exists(key: str, environment: str) -> bool`
 
-Check if a configuration key exists.
+Check if a configuration key exists in specific environment.
 
 **Parameters:**
 - `key`: Configuration key to check
+- `environment`: Environment identifier (REQUIRED)
 
-**Returns:** `True` if key exists, `False` otherwise
+**Returns:** `True` if key exists in the environment, `False` otherwise
 
 **Example:**
 ```python
-if client.exists("database"):
-    config = client.read("database")
+if client.exists("database", "production"):
+    config = client.read("database", "production")
 ```
 
-###### `get_or_default(key: str, default: Dict[str, Any]) -> Dict[str, Any]`
+###### `get_or_default(key: str, environment: str, default: Union[Dict, str, int, bool, list]) -> Dict[str, Any]`
 
 Get configuration or return default if not found.
 
 **Parameters:**
 - `key`: Configuration key to retrieve
+- `environment`: Environment identifier (REQUIRED)
 - `default`: Default value to return if not found
 
 **Returns:** Configuration dictionary or default
 
 **Example:**
 ```python
-config = client.get_or_default("optional", {"enabled": False})
+config = client.get_or_default("optional", "production", {"enabled": False})
 ```
 
-###### `count(category: Optional[str] = None) -> int`
+###### `count(category: Optional[str] = None, environment: Optional[str] = None) -> int`
 
-Count configurations, optionally filtered by category.
+Count configurations, optionally filtered by category and/or environment.
 
 **Parameters:**
 - `category`: Optional category filter
+- `environment`: Optional environment filter
 
 **Returns:** Number of configurations
 
 **Example:**
 ```python
 total = client.count()
-prod_count = client.count(category="production")
+prod_count = client.count(environment="production")
 ```
 
 ###### `list_categories() -> List[str]`
@@ -845,7 +974,18 @@ Get list of all unique categories.
 **Example:**
 ```python
 categories = client.list_categories()
-print(f"Categories: {', '.join(categories)}")
+```
+
+###### `list_environments() -> List[str]`
+
+Get list of all unique environments.
+
+**Returns:** Sorted list of environment names
+
+**Example:**
+```python
+environments = client.list_environments()
+print(f"Environments: {', '.join(environments)}")
 ```
 
 ##### Session Management
@@ -866,7 +1006,7 @@ The client supports context manager protocol for automatic cleanup.
 **Example:**
 ```python
 with OpenSecureConfClient(base_url="...", user_key="...") as client:
-    config = client.create("key", {"value": "data"})
+    config = client.create("key", {"value": "data"}, "production")
 # Session automatically closed
 ```
 
@@ -877,8 +1017,8 @@ with OpenSecureConfClient(base_url="...", user_key="...") as client:
 ```
 OpenSecureConfError (base exception)
 ├── AuthenticationError          # Invalid or missing credentials
-├── ConfigurationNotFoundError   # Configuration key does not exist
-├── ConfigurationExistsError     # Configuration key already exists
+├── ConfigurationNotFoundError   # Configuration (key, environment) does not exist
+├── ConfigurationExistsError     # Configuration (key, environment) already exists
 └── ClusterError                 # Cluster operation failed
 ```
 
@@ -895,14 +1035,14 @@ from opensecureconf_client import (
 )
 
 try:
-    config = client.create("mykey", {"data": "value"})
+    config = client.create("mykey", {"data": "value"}, "production")
 except AuthenticationError:
     print("Authentication failed - check your user_key and api_key")
 except ConfigurationExistsError:
-    print("Configuration already exists - use update() instead")
-    config = client.update("mykey", {"data": "new_value"})
+    print("Configuration already exists in this environment - use update() instead")
+    config = client.update("mykey", "production", {"data": "new_value"})
 except ConfigurationNotFoundError:
-    print("Configuration not found")
+    print("Configuration not found in specified environment")
 except ClusterError as e:
     print(f"Cluster error: {e}")
 except OpenSecureConfError as e:
@@ -916,20 +1056,20 @@ except ConnectionError as e:
 ```python
 # 1. Use specific exceptions first
 try:
-    config = client.read("important_config")
+    config = client.read("important_config", "production")
 except ConfigurationNotFoundError:
     # Create with defaults if not found
-    config = client.create("important_config", {"default": "value"})
+    config = client.create("important_config", {"default": "value"}, "production")
 
 # 2. Use exists() to avoid exceptions
-if not client.exists("optional_config"):
-    client.create("optional_config", {"data": "value"})
+if not client.exists("optional_config", "production"):
+    client.create("optional_config", {"data": "value"}, "production")
 
 # 3. Use get_or_default() for optional configurations
-config = client.get_or_default("optional", {"enabled": False})
+config = client.get_or_default("optional", "production", {"enabled": False})
 
 # 4. Handle bulk operation failures
-result = client.bulk_delete(keys, ignore_errors=True)
+result = client.bulk_delete(items, ignore_errors=True)
 if result['failed']:
     print(f"Some deletions failed: {result['failed']}")
 ```
@@ -1003,45 +1143,71 @@ export OSC_LOG_LEVEL="INFO"
 ```python
 # ✅ Good: Automatic cleanup
 with OpenSecureConfClient(base_url="...", user_key="...") as client:
-    config = client.create("key", {"data": "value"})
+    config = client.create("key", {"data": "value"}, "production")
 
 # ❌ Avoid: Manual cleanup required
 client = OpenSecureConfClient(base_url="...", user_key="...")
-config = client.create("key", {"data": "value"})
+config = client.create("key", {"data": "value"}, "production")
 client.close()  # Easy to forget
 ```
 
-### 2. Check Existence Before Operations
+### 2. Always Specify Environment
+
+```python
+# ✅ Good: Explicit environment
+config = client.create("api_url", "https://api.com", "production")
+prod_config = client.read("api_url", "production")
+
+# ❌ Error: Environment is now required
+# config = client.create("api_url", "https://api.com")  # This will fail
+```
+
+### 3. Use Multi-Environment Configuration
+
+```python
+# ✅ Good: Separate configurations per environment
+for env in ["production", "staging", "development"]:
+    client.create("database", get_db_config(env), env, "config")
+
+# ❌ Avoid: Mixing environments in one key
+client.create("database_prod", prod_config, "production")
+client.create("database_staging", staging_config, "production")
+```
+
+### 4. Check Existence Before Operations
 
 ```python
 # ✅ Good: Avoid exceptions
-if not client.exists("config"):
-    client.create("config", {"data": "value"})
+if not client.exists("config", "production"):
+    client.create("config", {"data": "value"}, "production")
 
 # ❌ Avoid: Exception handling for flow control
 try:
-    client.create("config", {"data": "value"})
+    client.create("config", {"data": "value"}, "production")
 except ConfigurationExistsError:
     pass
 ```
 
-### 3. Use Batch Operations for Multiple Items
+### 5. Use Batch Operations for Multiple Items
 
 ```python
 # ✅ Good: Single batch operation
-keys = ["config1", "config2", "config3"]
-configs = client.bulk_read(keys, ignore_errors=True)
+items = [
+    {"key": "config1", "environment": "production"},
+    {"key": "config2", "environment": "production"}
+]
+configs = client.bulk_read(items, ignore_errors=True)
 
 # ❌ Avoid: Multiple individual requests
 configs = []
-for key in keys:
+for item in items:
     try:
-        configs.append(client.read(key))
+        configs.append(client.read(item["key"], item["environment"]))
     except:
         pass
 ```
 
-### 4. Enable Retry for Production
+### 6. Enable Retry for Production
 
 ```python
 # ✅ Good: Resilient to transient failures
@@ -1060,7 +1226,7 @@ client = OpenSecureConfClient(
 )
 ```
 
-### 5. Use Structured Logging
+### 7. Use Structured Logging
 
 ```python
 # ✅ Good: Enable logging for production monitoring
@@ -1078,7 +1244,7 @@ client = OpenSecureConfClient(
 )
 ```
 
-### 6. Secure Credential Management
+### 8. Secure Credential Management
 
 ```python
 # ✅ Good: Load from environment or secrets manager
@@ -1099,7 +1265,7 @@ client = OpenSecureConfClient(
 )
 ```
 
-### 7. Monitor Cluster Health
+### 9. Monitor Cluster Health
 
 ```python
 # ✅ Good: Regular health checks
@@ -1110,7 +1276,20 @@ if client.ping():
             logger.warning(f"Cluster degraded: {status['healthy_nodes']}/{status['total_nodes']}")
 
 # ❌ Avoid: No health monitoring
-config = client.read("config")  # Might fail silently in degraded cluster
+config = client.read("config", "production")  # Might fail silently in degraded cluster
+```
+
+### 10. Organize by Environment
+
+```python
+# ✅ Good: Clear environment separation
+environments = client.list_environments()
+for env in environments:
+    configs = client.list_all(environment=env)
+    print(f"{env}: {len(configs)} configurations")
+
+# ❌ Avoid: Mixing all environments
+all_configs = client.list_all()  # Hard to manage
 ```
 
 ## 🔨 Development
@@ -1242,6 +1421,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Encryption powered by [cryptography](https://cryptography.io/)
 - HTTP client using [requests](https://requests.readthedocs.io/)
 
----
+***
 
 **Made with ❤️ by the OpenSecureConf Team**

@@ -149,6 +149,7 @@ async def create_configuration(
 @router.get("/{key}")
 async def read_configuration(
     key: str,
+    environment: str = Query(..., description="Environment identifier (REQUIRED)"),
     mode: Literal["short", "full"] = Query("short"),
     x_user_key: str = Header(...),
     manager: ConfigurationManager = Depends(get_config_manager)
@@ -179,8 +180,10 @@ async def read_configuration(
             result = await asyncio.to_thread(
                 manager.read,
                 key=key,
+                environment=environment,
                 include_timestamps=include_timestamps
             )
+
 
             # Metrics
             config_operations_total.labels(operation='read', status='success').inc()
@@ -228,6 +231,7 @@ async def read_configuration(
 async def update_configuration(
     key: str,
     config: ConfigUpdate,
+    environment: str = Query(..., description="Environment identifier (REQUIRED)"),
     x_user_key: str = Header(...),
     manager: ConfigurationManager = Depends(get_config_manager)
 ):
@@ -252,12 +256,12 @@ async def update_configuration(
     """
     try:
         result = await asyncio.to_thread(
-            manager.update,
-            key=key,
-            value=config.value,
-            category=config.category,
-            environment=config.environment
-        )
+                    manager.update,
+                    key=key,
+                    environment=environment,
+                    value=config.value,
+                    category=config.category
+                )
 
         # Metrics
         config_operations_total.labels(operation='update', status='success').inc()
@@ -293,6 +297,7 @@ async def update_configuration(
 @router.delete("/{key}")
 async def delete_configuration(
     key: str,
+    environment: str = Query(..., description="Environment identifier (REQUIRED)"),
     x_user_key: str = Header(...),
     manager: ConfigurationManager = Depends(get_config_manager)
 ):
@@ -315,7 +320,11 @@ async def delete_configuration(
         HTTPException(500): If internal error occurs
     """
     try:
-        await asyncio.to_thread(manager.delete, key=key)
+        await asyncio.to_thread(
+            manager.delete,
+            key=key,
+            environment=environment
+        )
 
         # Metrics
         config_operations_total.labels(operation='delete', status='success').inc()

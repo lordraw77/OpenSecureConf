@@ -21,7 +21,7 @@ from datetime import datetime
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.fernet import Fernet
-from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime
+from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -31,26 +31,31 @@ Base = declarative_base()
 class ConfigurationModel(Base):  # pylint: disable=too-few-public-methods
     """
     SQLAlchemy ORM model for storing encrypted configurations.
-
+    
     Attributes:
         id (int): Primary key, auto-incremented
-        key (str): Unique configuration key (indexed for performance)
+        key (str): Configuration key (NOT unique alone, unique with environment)
         encrypted_value (str): Fernet-encrypted JSON value
         category (str): Optional category for grouping configurations
-        environment (str): Environment identifier (e.g., dev, staging, production)
+        environment (str): Environment identifier (REQUIRED - e.g., dev, staging, production)
         created_at (datetime): Timestamp when the configuration was created
         updated_at (datetime): Timestamp when the configuration was last updated
     """
-
     __tablename__ = "configurations"
-
+    
     id = Column(Integer, primary_key=True, autoincrement=True)
-    key = Column(String(255), unique=True, nullable=False, index=True)
+    key = Column(String(255), nullable=False, index=True)  # Rimosso unique=True
     encrypted_value = Column(Text, nullable=False)
     category = Column(String(100), nullable=True, index=True)
-    environment = Column(String(100), nullable=True, index=True)
+    environment = Column(String(100), nullable=False, index=True)  # Ora obbligatorio
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Vincolo di unicità composito su (key, environment)
+    __table_args__ = (
+        UniqueConstraint('key', 'environment', name='uix_key_environment'),
+    )
+
 
 
 class EncryptionManager:
@@ -205,34 +210,31 @@ class ConfigurationManager:
     def create(self, key: str, value: dict, category: str = None, environment: str = None) -> dict:
         """
         Create a new encrypted configuration entry.
-
-        Thread-safe operation with automatic session management.
-        Sets created_at and updated_at to current UTC timestamp.
-
+        
         Args:
-            key (str): Unique configuration key
+            key (str): Configuration key
             value (dict): Configuration data to encrypt and store
             category (str, optional): Category for grouping configurations
-            environment (str, optional): Environment identifier (dev, staging, production)
-
-        Returns:
-            dict: Created configuration with keys: id, key, category, environment, value,
-                  created_at, updated_at
-
+            environment (str): Environment identifier (REQUIRED)
+        
         Raises:
-            ValueError: If configuration with the same key already exists
+            ValueError: If environment is not provided or if (key, environment) combination already exists
         """
+        if not environment:
+            raise ValueError("environment is required")
+        
         session = self.session_factory()
         try:
-            # Check if key already exists
-            existing = session.query(ConfigurationModel).filter_by(key=key).first()
+            # Check if (key, environment) combination already exists
+            existing = session.query(ConfigurationModel).filter_by(
+                key=key, environment=environment
+            ).first()
             if existing:
-                raise ValueError(f"Configuration with key '{key}' already exists")
-
-            # Encrypt the value
+                raise ValueError(
+                    f"Configuration with key '{key}' already exists in environment '{environment}'"
+                )
+            
             encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
-
-            # Create configuration with timestamps
             now = datetime.utcnow()
             config = ConfigurationModel(
                 key=key,
@@ -242,10 +244,10 @@ class ConfigurationManager:
                 created_at=now,
                 updated_at=now
             )
-
+            
             session.add(config)
             session.commit()
-
+            
             return {
                 "id": config.id,
                 "key": config.key,
@@ -255,36 +257,36 @@ class ConfigurationManager:
                 "created_at": config.created_at.isoformat() + "Z",
                 "updated_at": config.updated_at.isoformat() + "Z"
             }
-
         finally:
             session.close()
 
-    def read(self, key: str, include_timestamps: bool = False) -> dict:
+    def read(self, key: str, environment: str, include_timestamps: bool = False) -> dict:
         """
-        Read and decrypt a configuration entry by key.
-
-        Thread-safe operation with automatic session management.
-
+        Read and decrypt a configuration entry by key and environment.
+        
         Args:
             key (str): Configuration key to retrieve
-            include_timestamps (bool): If True, include created_at and updated_at in response
-
-        Returns:
-            dict: Configuration with keys: id, key, category, environment, value (decrypted)
-                  If include_timestamps=True, also includes: created_at, updated_at
-
+            environment (str): Environment identifier (REQUIRED)
+            include_timestamps (bool): If True, include created_at and updated_at
+        
         Raises:
-            ValueError: If configuration key not found
+            ValueError: If environment is not provided or configuration not found
         """
+        if not environment:
+            raise ValueError("environment is required")
+        
         session = self.session_factory()
         try:
-            config = session.query(ConfigurationModel).filter_by(key=key).first()
+            config = session.query(ConfigurationModel).filter_by(
+                key=key, environment=environment
+            ).first()
+            
             if not config:
-                raise ValueError(f"Configuration with key '{key}' not found")
-
-            # Decrypt the value
+                raise ValueError(
+                    f"Configuration with key '{key}' not found in environment '{environment}'"
+                )
+            
             decrypted_value = self.encryption_manager.decrypt(config.encrypted_value)
-
             result = {
                 "id": config.id,
                 "key": config.key,
@@ -292,57 +294,50 @@ class ConfigurationManager:
                 "environment": config.environment,
                 "value": json.loads(decrypted_value),
             }
-
-            # Include timestamps if requested (full mode)
+            
             if include_timestamps:
                 result["created_at"] = config.created_at.isoformat() + "Z"
                 result["updated_at"] = config.updated_at.isoformat() + "Z"
-
+            
             return result
-
         finally:
             session.close()
 
-    def update(self, key: str, value: dict, category: str = None, environment: str = None) -> dict:
+    def update(self, key: str, environment: str, value: dict, category: str = None) -> dict:
         """
         Update an existing configuration with new encrypted value.
-
-        Thread-safe operation with automatic session management.
-        Updates the updated_at timestamp to current UTC time.
-
+        
         Args:
             key (str): Configuration key to update
-            value (dict): New configuration data to encrypt and store
+            environment (str): Environment identifier (REQUIRED)
+            value (dict): New configuration data
             category (str, optional): New category (if None, keeps existing)
-            environment (str, optional): New environment (if None, keeps existing)
-
-        Returns:
-            dict: Updated configuration with keys: id, key, category, environment, value,
-                  created_at, updated_at
-
+        
         Raises:
-            ValueError: If configuration key not found
+            ValueError: If environment is not provided or configuration not found
         """
+        if not environment:
+            raise ValueError("environment is required")
+        
         session = self.session_factory()
         try:
-            config = session.query(ConfigurationModel).filter_by(key=key).first()
+            config = session.query(ConfigurationModel).filter_by(
+                key=key, environment=environment
+            ).first()
+            
             if not config:
-                raise ValueError(f"Configuration with key '{key}' not found")
-
-            # Encrypt the new value
+                raise ValueError(
+                    f"Configuration with key '{key}' not found in environment '{environment}'"
+                )
+            
             config.encrypted_value = self.encryption_manager.encrypt(json.dumps(value))
-
-            # Update fields
+            
             if category is not None:
                 config.category = category
-            if environment is not None:
-                config.environment = environment
-
-            # Update timestamp
+            
             config.updated_at = datetime.utcnow()
-
             session.commit()
-
+            
             return {
                 "id": config.id,
                 "key": config.key,
@@ -352,35 +347,37 @@ class ConfigurationManager:
                 "created_at": config.created_at.isoformat() + "Z",
                 "updated_at": config.updated_at.isoformat() + "Z"
             }
-
         finally:
             session.close()
 
-    def delete(self, key: str) -> bool:
+    def delete(self, key: str, environment: str) -> bool:
         """
         Delete a configuration entry permanently.
-
-        Thread-safe operation with automatic session management.
-
+        
         Args:
             key (str): Configuration key to delete
-
-        Returns:
-            bool: True if deletion successful
-
+            environment (str): Environment identifier (REQUIRED)
+        
         Raises:
-            ValueError: If configuration key not found
+            ValueError: If environment is not provided or configuration not found
         """
+        if not environment:
+            raise ValueError("environment is required")
+        
         session = self.session_factory()
         try:
-            config = session.query(ConfigurationModel).filter_by(key=key).first()
+            config = session.query(ConfigurationModel).filter_by(
+                key=key, environment=environment
+            ).first()
+            
             if not config:
-                raise ValueError(f"Configuration with key '{key}' not found")
-
+                raise ValueError(
+                    f"Configuration with key '{key}' not found in environment '{environment}'"
+                )
+            
             session.delete(config)
             session.commit()
             return True
-
         finally:
             session.close()
 

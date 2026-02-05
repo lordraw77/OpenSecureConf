@@ -14,6 +14,9 @@ import { ConfirmationService, MessageService } from 'primeng/api';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
 import { ConfigEntry } from 'opensecureconf-client';
 
+// Aggiunto tipo per PrimeNG severity
+type PrimeNGSeverity = 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast';
+
 interface ExtendedConfigEntry extends ConfigEntry {
   created_at?: string;
   updated_at?: string;
@@ -601,6 +604,9 @@ export class ConfigListComponent implements OnInit {
   currentConfig: Partial<ConfigEntry> = {};
   currentConfigValueString = '';
   viewingConfig: ExtendedConfigEntry | null = null;
+  
+  // Memorizza l'environment originale per l'edit
+  private originalEnvironment: string = '';
 
   constructor(
     private oscService: OpenSecureConfService,
@@ -621,33 +627,23 @@ export class ConfigListComponent implements OnInit {
     return config?.updated_at || config?.updatedAt || null;
   }
 
-  // Hash migliorato per maggiore distribuzione dei colori
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
     
-    // FNV-1a hash per migliore distribuzione
     let hash = 2166136261;
     for (let i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
       hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
-    hash = hash >>> 0; // Convert to unsigned 32-bit integer
+    hash = hash >>> 0;
     
-    // Palette espansa con 40 colori distintivi
     const colors = [
-      // Blues
       '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
-      // Greens
       '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
-      // Purples & Pinks
       '#5f27cd', '#6c5ce7', '#a29bfe', '#764ba2', '#f093fb', '#fa709a', '#fd79a8', '#ec4899',
-      // Oranges & Yellows
       '#feca57', '#fdcb6e', '#f59e0b', '#d97706', '#fb923c', '#f97316', '#ff6348', '#fbbf24',
-      // Reds
       '#ff7675', '#ef4444', '#dc2626', '#b91c1c',
-      // Teals & Cyans
       '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
-      // Others
       '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
     ];
     
@@ -701,6 +697,7 @@ export class ConfigListComponent implements OnInit {
     this.dialogMode = 'create';
     this.currentConfig = {};
     this.currentConfigValueString = '""';
+    this.originalEnvironment = '';
     this.displayDialog = true;
   }
 
@@ -708,6 +705,8 @@ export class ConfigListComponent implements OnInit {
     this.dialogMode = 'edit';
     this.currentConfig = { ...config };
     this.currentConfigValueString = JSON.stringify(config.value, null, 2);
+    // Memorizza l'environment originale per l'update
+    this.originalEnvironment = config.environment;
     this.displayDialog = true;
   }
 
@@ -722,6 +721,12 @@ export class ConfigListComponent implements OnInit {
       return;
     }
 
+    // Validazione environment obbligatorio
+    if (!this.currentConfig.environment) {
+      this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'L\'ambiente è obbligatorio' });
+      return;
+    }
+
     let value: any;
     try {
       value = JSON.parse(this.currentConfigValueString);
@@ -730,33 +735,53 @@ export class ConfigListComponent implements OnInit {
       return;
     }
 
-    const options = { category: this.currentConfig.category, environment: this.currentConfig.environment };
     const operation = this.dialogMode === 'create'
-      ? this.oscService.createConfig(this.currentConfig.key, value, options)
-      : this.oscService.updateConfig(this.currentConfig.key!, value, options);
+      // Create: environment è il terzo parametro
+      ? this.oscService.createConfig(
+          this.currentConfig.key,
+          value,
+          this.currentConfig.environment,
+          this.currentConfig.category
+        )
+      // Update: environment è il secondo parametro (usa l'originale)
+      : this.oscService.updateConfig(
+          this.currentConfig.key!,
+          this.originalEnvironment,
+          value,
+          this.currentConfig.category
+        );
 
     operation.subscribe({
       next: () => {
-        this.messageService.add({ severity: 'success', summary: 'Successo', detail: `Configurazione ${this.dialogMode === 'create' ? 'creata' : 'aggiornata'} con successo` });
+        this.messageService.add({ 
+          severity: 'success', 
+          summary: 'Successo', 
+          detail: `Configurazione ${this.dialogMode === 'create' ? 'creata' : 'aggiornata'} con successo` 
+        });
         this.displayDialog = false;
         this.loadConfigs();
         this.loadFilters();
       },
       error: (error) => {
-        this.messageService.add({ severity: 'error', summary: 'Errore', detail: error.detail || 'Operazione fallita' });
+        this.messageService.add({ 
+          severity: 'error', 
+          summary: 'Errore', 
+          detail: error.detail || 'Operazione fallita' 
+        });
       }
     });
   }
 
   deleteConfig(config: ConfigEntry) {
     this.confirmationService.confirm({
-      message: `Sei sicuro di voler eliminare la configurazione "${config.key}"?`,
+      message: `Sei sicuro di voler eliminare la configurazione "${config.key}" dall'ambiente "${config.environment}"?`,
       header: 'Conferma Eliminazione',
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Sì',
       rejectLabel: 'No',
       accept: () => {
-        this.oscService.deleteConfig(config.key).subscribe({
+        // Delete richiede environment come secondo parametro
+        this.oscService.deleteConfig(config.key, config.environment).subscribe({
           next: () => {
             this.messageService.add({ severity: 'success', summary: 'Successo', detail: 'Configurazione eliminata' });
             this.loadConfigs();

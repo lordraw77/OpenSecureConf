@@ -9,8 +9,10 @@ export interface ConfigEntry {
   id?: number;
   key: string;
   value: ConfigValue;
+  environment: string;  // Ora obbligatorio
   category?: string;
-  environment?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ClusterStatus {
@@ -90,6 +92,7 @@ export class OpenSecureConfClient {
         } catch {
           errorDetail = response.statusText;
         }
+
         throw new OpenSecureConfError(response.status, `HTTP ${response.status}`, errorDetail);
       }
 
@@ -103,9 +106,11 @@ export class OpenSecureConfClient {
       if (error instanceof OpenSecureConfError) {
         throw error;
       }
+
       if (error instanceof Error) {
         throw new OpenSecureConfError(0, 'Network error', error.message);
       }
+
       throw error;
     }
   }
@@ -114,29 +119,90 @@ export class OpenSecureConfClient {
     return this.request('GET', '/');
   }
 
-  async create(key: string, value: ConfigValue, options?: { category?: string; environment?: string }): Promise<ConfigEntry> {
-    return this.request('POST', '/configs', { key, value, category: options?.category, environment: options?.environment });
+  /**
+   * Create a new configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param value Configuration value
+   * @param environment Environment identifier (REQUIRED)
+   * @param category Optional category
+   */
+  async create(
+    key: string,
+    value: ConfigValue,
+    environment: string,
+    category?: string
+  ): Promise<ConfigEntry> {
+    if (!environment) {
+      throw new Error('environment is required');
+    }
+    return this.request('POST', '/configs', {
+      key,
+      value,
+      environment,
+      category,
+    });
   }
 
-  async read(key: string): Promise<ConfigEntry> {
-    return this.request('GET', `/configs/${encodeURIComponent(key)}`);
+  /**
+   * Read a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   */
+  async read(key: string, environment: string): Promise<ConfigEntry> {
+    if (!environment) {
+      throw new Error('environment is required');
+    }
+    const params = new URLSearchParams({ environment });
+    return this.request('GET', `/configs/${encodeURIComponent(key)}?${params.toString()}`);
   }
 
-  async update(key: string, value: ConfigValue, options?: { category?: string; environment?: string }): Promise<ConfigEntry> {
-    return this.request('PUT', `/configs/${encodeURIComponent(key)}`, { value, category: options?.category, environment: options?.environment });
+  /**
+   * Update a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED, cannot be changed)
+   * @param value New configuration value
+   * @param category Optional new category
+   */
+  async update(
+    key: string,
+    environment: string,
+    value: ConfigValue,
+    category?: string
+  ): Promise<ConfigEntry> {
+    if (!environment) {
+      throw new Error('environment is required');
+    }
+    const params = new URLSearchParams({ environment });
+    return this.request('PUT', `/configs/${encodeURIComponent(key)}?${params.toString()}`, {
+      value,
+      category,
+    });
   }
 
-  async delete(key: string): Promise<{ message: string }> {
-    return this.request('DELETE', `/configs/${encodeURIComponent(key)}`);
+  /**
+   * Delete a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   */
+  async delete(key: string, environment: string): Promise<{ message: string }> {
+    if (!environment) {
+      throw new Error('environment is required');
+    }
+    const params = new URLSearchParams({ environment });
+    return this.request('DELETE', `/configs/${encodeURIComponent(key)}?${params.toString()}`);
   }
 
+  /**
+   * List configurations with optional filters
+   */
   async list(options?: { category?: string; environment?: string }): Promise<ConfigEntry[]> {
     const params = new URLSearchParams();
     if (options?.category) params.append('category', options.category);
     if (options?.environment) params.append('environment', options.environment);
     params.append('mode', 'full');
+
     const queryString = params.toString();
-    return this.request('GET', queryString ? `/configs?${queryString}` : '/configs');
+    return this.request('GET', queryString ? `/configs?${queryString}` : '/configs?mode=full');
   }
 
   async getClusterStatus(): Promise<ClusterStatus> {
@@ -151,14 +217,20 @@ export class OpenSecureConfClient {
     const url = `${this.baseUrl}/metrics`;
     const headers: Record<string, string> = {};
     if (this.apiKey) headers['X-API-Key'] = this.apiKey;
+
     const response = await fetch(url, { headers });
     if (!response.ok) throw new OpenSecureConfError(response.status, 'Failed to fetch metrics');
     return await response.text();
   }
 
-  async exists(key: string): Promise<boolean> {
+  /**
+   * Check if a configuration exists in specific environment
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   */
+  async exists(key: string, environment: string): Promise<boolean> {
     try {
-      await this.read(key);
+      await this.read(key, environment);
       return true;
     } catch (error) {
       if (error instanceof OpenSecureConfError && error.statusCode === 404) return false;
@@ -174,42 +246,88 @@ export class OpenSecureConfClient {
   async listCategories(): Promise<string[]> {
     const configs = await this.list();
     const categories = new Set<string>();
-    configs.forEach(c => { if (c.category) categories.add(c.category); });
+    configs.forEach((c) => {
+      if (c.category) categories.add(c.category);
+    });
     return Array.from(categories).sort();
   }
 
   async listEnvironments(): Promise<string[]> {
     const configs = await this.list();
     const environments = new Set<string>();
-    configs.forEach(c => { if (c.environment) environments.add(c.environment); });
+    configs.forEach((c) => {
+      if (c.environment) environments.add(c.environment);
+    });
     return Array.from(environments).sort();
   }
 
-  async bulkDelete(keys: string[], ignoreErrors = false): Promise<{ deleted: string[]; failed: Array<{ key: string; error: any }> }> {
-    const deleted: string[] = [];
-    const failed: Array<{ key: string; error: any }> = [];
-    for (const key of keys) {
+  /**
+   * Bulk delete configurations (environment REQUIRED for each)
+   */
+  async bulkDelete(
+    items: Array<{ key: string; environment: string }>,
+    ignoreErrors = false
+  ): Promise<{
+    deleted: Array<{ key: string; environment: string }>;
+    failed: Array<{ key: string; environment: string; error: any }>;
+  }> {
+    const deleted: Array<{ key: string; environment: string }> = [];
+    const failed: Array<{ key: string; environment: string; error: any }> = [];
+
+    for (const item of items) {
+      if (!item.environment) {
+        const error = new Error('environment is required');
+        failed.push({ key: item.key, environment: item.environment, error });
+        if (!ignoreErrors) throw error;
+        continue;
+      }
+
       try {
-        await this.delete(key);
-        deleted.push(key);
+        await this.delete(item.key, item.environment);
+        deleted.push({ key: item.key, environment: item.environment });
       } catch (error) {
-        failed.push({ key, error });
+        failed.push({ key: item.key, environment: item.environment, error });
         if (!ignoreErrors) throw error;
       }
     }
+
     return { deleted, failed };
   }
 
-  async bulkCreate(configs: Array<{ key: string; value: ConfigValue; category?: string; environment?: string }>, ignoreErrors = false): Promise<ConfigEntry[]> {
+  /**
+   * Bulk create configurations (environment REQUIRED for each)
+   */
+  async bulkCreate(
+    configs: Array<{
+      key: string;
+      value: ConfigValue;
+      environment: string;
+      category?: string;
+    }>,
+    ignoreErrors = false
+  ): Promise<ConfigEntry[]> {
     const results: ConfigEntry[] = [];
+
     for (const config of configs) {
+      if (!config.environment) {
+        const error = new Error(`environment is required for key '${config.key}'`);
+        if (!ignoreErrors) throw error;
+        continue;
+      }
+
       try {
-        const result = await this.create(config.key, config.value, { category: config.category, environment: config.environment });
+        const result = await this.create(
+          config.key,
+          config.value,
+          config.environment,
+          config.category
+        );
         results.push(result);
       } catch (error) {
         if (!ignoreErrors) throw error;
       }
     }
+
     return results;
   }
 }

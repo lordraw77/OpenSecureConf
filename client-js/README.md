@@ -1,9 +1,11 @@
-
 # OpenSecureConf TypeScript/JavaScript Client
+
 
 [![npm version](https://badge.fury.io/js/opensecureconf-client.svg)](https://www.npmjs.com/package/opensecureconf-client)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+
 
 A comprehensive TypeScript/JavaScript client library for OpenSecureConf - Encrypted configuration management with cluster support and HTTPS/SSL.
 
@@ -20,7 +22,7 @@ A comprehensive TypeScript/JavaScript client library for OpenSecureConf - Encryp
 - 🌍 **Universal** - Works in Node.js and browsers
 - 🔄 **Auto-Retry** - Built-in timeout and error handling
 - 📊 **Metrics** - Prometheus metrics support
-- 🎯 **Environment & Category Filtering** - Organize configurations by environment and category
+- 🎯 **Multi-Environment Support** - Same key in different environments (production, staging, development)
 
 ## 📦 Installation
 
@@ -52,31 +54,81 @@ const client = new OpenSecureConfClient({
   apiKey: 'optional-api-key', // Optional
 });
 
-// Create configuration with environment and category
-const config = await client.create('database', {
-  host: 'localhost',
-  port: 5432,
-  username: 'admin',
-}, {
-  category: 'config',
-  environment: 'production'
-});
+// Create configuration (environment is REQUIRED)
+const config = await client.create(
+  'database',
+  {
+    host: 'localhost',
+    port: 5432,
+    username: 'admin',
+  },
+  'production', // Environment (REQUIRED)
+  'config'      // Category (optional)
+);
 
-// Read configuration
-const retrieved = await client.read('database');
+// Read configuration (environment is REQUIRED)
+const retrieved = await client.read('database', 'production');
 console.log(retrieved.value); // { host: 'localhost', port: 5432, ... }
 console.log(retrieved.environment); // 'production'
 
-// Update configuration
-await client.update('database', {
-  host: 'db.example.com',
-  port: 5432,
-}, {
-  environment: 'production'
+// Update configuration (environment is REQUIRED)
+await client.update(
+  'database',
+  'production',
+  {
+    host: 'db.example.com',
+    port: 5432,
+  },
+  'config' // Category (optional)
+);
+
+// Delete configuration (environment is REQUIRED)
+await client.delete('database', 'production');
+```
+
+### Same Key in Different Environments
+
+```typescript
+// Create same key in production
+await client.create(
+  'database',
+  { host: 'db.prod.com', port: 5432 },
+  'production',
+  'config'
+);
+
+// Create same key in staging (different value)
+await client.create(
+  'database',
+  { host: 'db.staging.com', port: 5432 },
+  'staging',
+  'config'
+);
+
+// Create same key in development
+await client.create(
+  'database',
+  { host: 'localhost', port: 5432 },
+  'development',
+  'config'
+);
+
+// Read from specific environment
+const prodDb = await client.read('database', 'production');
+const stagingDb = await client.read('database', 'staging');
+
+console.log(prodDb.value.host);     // 'db.prod.com'
+console.log(stagingDb.value.host);  // 'db.staging.com'
+
+// Update only staging environment
+await client.update('database', 'staging', {
+  host: 'db-new.staging.com',
+  port: 5433
 });
 
-// Delete configuration
-await client.delete('database');
+// Delete only development environment
+await client.delete('database', 'development');
+// production and staging remain untouched
 ```
 
 ### HTTPS with Valid Certificate (Production)
@@ -90,13 +142,15 @@ const client = new OpenSecureConfClient({
 });
 
 // All operations work the same
-const config = await client.create('api_keys', {
-  stripe: 'sk_live_xxx',
-  aws: 'AKIA_xxx',
-}, {
-  category: 'secrets',
-  environment: 'production'
-});
+const config = await client.create(
+  'api_keys',
+  {
+    stripe: 'sk_live_xxx',
+    aws: 'AKIA_xxx',
+  },
+  'production',  // Environment (REQUIRED)
+  'secrets'      // Category (optional)
+);
 ```
 
 ### HTTPS with Self-Signed Certificate (Development)
@@ -206,33 +260,44 @@ interface OpenSecureConfOptions {
 #### Configuration Operations
 
 ```typescript
-// Create with environment and category
+// Create with environment (REQUIRED) and optional category
 await client.create(
   key: string,
   value: ConfigValue,
-  options?: { category?: string; environment?: string }
+  environment: string,    // REQUIRED
+  category?: string
 ): Promise<ConfigEntry>
 
-// Read
-await client.read(key: string): Promise<ConfigEntry>
+// Read with environment (REQUIRED)
+await client.read(
+  key: string, 
+  environment: string     // REQUIRED
+): Promise<ConfigEntry>
 
-// Update with environment and category
+// Update with environment (REQUIRED) and optional category
 await client.update(
   key: string,
+  environment: string,    // REQUIRED (cannot be changed)
   value: ConfigValue,
-  options?: { category?: string; environment?: string }
+  category?: string
 ): Promise<ConfigEntry>
 
-// Delete
-await client.delete(key: string): Promise<{ message: string }>
+// Delete with environment (REQUIRED)
+await client.delete(
+  key: string, 
+  environment: string     // REQUIRED
+): Promise<{ message: string }>
 
 // List with filters
 await client.list(
   options?: { category?: string; environment?: string }
 ): Promise<ConfigEntry[]>
 
-// Check existence
-await client.exists(key: string): Promise<boolean>
+// Check existence with environment (REQUIRED)
+await client.exists(
+  key: string, 
+  environment: string     // REQUIRED
+): Promise<boolean>
 
 // Count with filters
 await client.count(
@@ -280,28 +345,31 @@ await client.importFromFile(
 #### Batch Operations
 
 ```typescript
-// Bulk create
+// Bulk create (environment REQUIRED for each config)
 await client.bulkCreate(
   configs: Array<{
     key: string;
     value: ConfigValue;
+    environment: string;    // REQUIRED
     category?: string;
-    environment?: string;
   }>,
   ignoreErrors?: boolean
 ): Promise<ConfigEntry[]>
 
-// Bulk read
+// Bulk read (environment REQUIRED for each item)
 await client.bulkRead(
-  keys: string[],
+  items: Array<{ key: string; environment: string }>,
   ignoreErrors?: boolean
 ): Promise<ConfigEntry[]>
 
-// Bulk delete
+// Bulk delete (environment REQUIRED for each item)
 await client.bulkDelete(
-  keys: string[],
+  items: Array<{ key: string; environment: string }>,
   ignoreErrors?: boolean
-): Promise<{ deleted: string[]; failed: Array<{ key: string; error: any }> }>
+): Promise<{ 
+  deleted: Array<{ key: string; environment: string }>; 
+  failed: Array<{ key: string; environment: string; error: any }> 
+}>
 ```
 
 #### Cluster & Health
@@ -397,28 +465,27 @@ async function workflow() {
     const health = await client.healthCheck();
     console.log(`Status: ${health.status}`);
 
-    // 2. Create configurations
-    await client.create('database', {
-      host: 'postgres.local',
-      port: 5432,
-    }, {
-      category: 'config',
-      environment: 'production'
-    });
+    // 2. Create configurations with environments
+    await client.create(
+      'database',
+      { host: 'postgres.local', port: 5432 },
+      'production',
+      'config'
+    );
 
-    // 3. Batch create
+    // 3. Batch create with environments
     await client.bulkCreate([
       {
         key: 'redis',
         value: { host: 'redis.local', port: 6379 },
+        environment: 'production',
         category: 'cache',
-        environment: 'production'
       },
       {
         key: 'cache_ttl',
         value: 3600,
+        environment: 'production',
         category: 'settings',
-        environment: 'production'
       },
     ], true);
 
@@ -433,13 +500,11 @@ async function workflow() {
     console.log(`Backed up ${backup.total_configs} configurations`);
 
     // 6. Update configuration
-    await client.update('database', {
-      host: 'postgres.local',
-      port: 5432,
-      ssl: true,
-    }, {
-      environment: 'production'
-    });
+    await client.update(
+      'database',
+      'production',
+      { host: 'postgres.local', port: 5432, ssl: true }
+    );
 
     // 7. Save backup to file (Node.js)
     await client.backupToFile(
@@ -455,8 +520,12 @@ async function workflow() {
     //   true
     // );
 
-    // 9. Cleanup
-    await client.bulkDelete(['database', 'redis', 'cache_ttl'], true);
+    // 9. Cleanup (specify environment for each delete)
+    await client.bulkDelete([
+      { key: 'database', environment: 'production' },
+      { key: 'redis', environment: 'production' },
+      { key: 'cache_ttl', environment: 'production' },
+    ], true);
 
   } catch (error) {
     if (error instanceof OpenSecureConfError) {
@@ -466,25 +535,62 @@ async function workflow() {
 }
 ```
 
+### Multi-Environment Configuration Management
+
+```typescript
+// Create same key with different values across environments
+const environments = ['development', 'staging', 'production'];
+const configs = {
+  development: {
+    api_url: 'http://localhost:3000',
+    db_host: 'localhost',
+    debug: true,
+  },
+  staging: {
+    api_url: 'https://api.staging.example.com',
+    db_host: 'db.staging.internal',
+    debug: true,
+  },
+  production: {
+    api_url: 'https://api.example.com',
+    db_host: 'db.prod.internal',
+    debug: false,
+  },
+};
+
+// Create configurations for each environment
+for (const env of environments) {
+  await client.create('api_url', configs[env].api_url, env, 'config');
+  await client.create('db_host', configs[env].db_host, env, 'config');
+  await client.create('debug', configs[env].debug, env, 'settings');
+}
+
+// Read configuration from specific environment
+const prodApiUrl = await client.read('api_url', 'production');
+console.log(prodApiUrl.value); // 'https://api.example.com'
+
+const devApiUrl = await client.read('api_url', 'development');
+console.log(devApiUrl.value); // 'http://localhost:3000'
+
+// List all environments
+const allEnvs = await client.listEnvironments();
+console.log(allEnvs); // ['development', 'production', 'staging']
+
+// List configs for specific environment
+const prodConfigs = await client.list({ environment: 'production' });
+console.log(prodConfigs.length); // 3
+
+// Update only staging environment
+await client.update('api_url', 'staging', 'https://api-v2.staging.example.com');
+
+// Delete from specific environment
+await client.delete('debug', 'development');
+// 'staging' and 'production' debug configs remain untouched
+```
+
 ### Environment & Category Management
 
 ```typescript
-// Create configs with different environments
-await client.create('api_url', 'https://api.dev.example.com', {
-  category: 'config',
-  environment: 'development'
-});
-
-await client.create('api_url', 'https://api.staging.example.com', {
-  category: 'config',
-  environment: 'staging'
-});
-
-await client.create('api_url', 'https://api.example.com', {
-  category: 'config',
-  environment: 'production'
-});
-
 // List all environments
 const environments = await client.listEnvironments();
 console.log(environments); // ['development', 'production', 'staging']
@@ -508,6 +614,10 @@ const prodCacheConfigs = await client.list({
 // Count configs by filters
 const prodCount = await client.count({ environment: 'production' });
 console.log(`Production configs: ${prodCount}`);
+
+// Check if key exists in specific environment
+const existsInProd = await client.exists('database', 'production');
+const existsInDev = await client.exists('database', 'development');
 ```
 
 ### Disaster Recovery Workflow
@@ -515,7 +625,7 @@ console.log(`Production configs: ${prodCount}`);
 ```typescript
 // Daily backup routine
 async function dailyBackup() {
-  const timestamp = new Date().toISOString().split('T');
+  const timestamp = new Date().toISOString().split('T')[0];
   
   // Backup production
   await client.backupToFile(
@@ -561,7 +671,7 @@ async function restoreFromBackup(backupFile: string, overwrite = false) {
 
 ```typescript
 try {
-  const config = await client.read('nonexistent');
+  const config = await client.read('nonexistent', 'production');
 } catch (error) {
   if (error instanceof OpenSecureConfError) {
     switch (error.statusCode) {
@@ -616,7 +726,11 @@ const client = new OpenSecureConfClient({
 
 ```typescript
 const result = await client.bulkDelete(
-  ['config1', 'config2', 'config3'],
+  [
+    { key: 'config1', environment: 'production' },
+    { key: 'config2', environment: 'production' },
+    { key: 'config3', environment: 'staging' },
+  ],
   true // ignoreErrors
 );
 
@@ -624,7 +738,9 @@ console.log(`Deleted: ${result.deleted.length}`);
 console.log(`Failed: ${result.failed.length}`);
 
 for (const failure of result.failed) {
-  console.error(`Failed to delete ${failure.key}: ${failure.error}`);
+  console.error(
+    `Failed to delete ${failure.key} (${failure.environment}): ${failure.error}`
+  );
 }
 ```
 
@@ -635,25 +751,25 @@ for (const failure of result.failed) {
 await client.create('database', {
   host: 'localhost',
   port: 5432
-});
+}, 'production');
 
 // String value
-await client.create('api_token', 'secret-token-123');
+await client.create('api_token', 'secret-token-123', 'production');
 
 // Number value
-await client.create('max_retries', 3);
+await client.create('max_retries', 3, 'production');
 
 // Boolean value
-await client.create('debug_enabled', false);
+await client.create('debug_enabled', false, 'production');
 
 // Array value
-await client.create('allowed_ips', ['192.168.1.1', '10.0.0.1']);
+await client.create('allowed_ips', ['192.168.1.1', '10.0.0.1'], 'production');
 
 // Read preserves types
-const dbConfig = await client.read('database');
+const dbConfig = await client.read('database', 'production');
 console.log(dbConfig.value.port); // number: 5432
 
-const token = await client.read('api_token');
+const token = await client.read('api_token', 'production');
 console.log(token.value); // string: 'secret-token-123'
 ```
 
@@ -682,7 +798,7 @@ const options: OpenSecureConfOptions = {
 const client = new OpenSecureConfClient(options);
 
 // Return types are inferred
-const config: ConfigEntry = await client.read('key');
+const config: ConfigEntry = await client.read('key', 'production');
 const status: ClusterStatus = await client.getClusterStatus();
 const backup: BackupResponse = await client.createBackup('password123');
 const importResult: ImportResponse = await client.importBackup(
@@ -705,6 +821,7 @@ const importResult: ImportResponse = await client.importBackup(
 - Store backups securely and encrypted
 - Rotate backup passwords regularly
 - Test backup/restore procedures periodically
+- Use separate configurations for each environment
 
 ### ❌ Don'ts
 
@@ -716,6 +833,7 @@ const importResult: ImportResponse = await client.importBackup(
 - **Never** store backups in plaintext
 - **Never** use weak backup passwords
 - **Never** share backup passwords insecurely
+- **Never** mix production and development configurations
 
 ### Environment Variables
 
@@ -759,10 +877,10 @@ const backup = await client.createBackup(
 | Status Code | Error Type | Description |
 |-------------|------------|-------------|
 | 0 | Network Error | Connection failed |
-| 400 | Bad Request | Invalid parameters |
+| 400 | Bad Request | Invalid parameters or missing environment |
 | 401 | Authentication | Invalid user key |
 | 403 | Forbidden | Invalid API key |
-| 404 | Not Found | Configuration not found |
+| 404 | Not Found | Configuration not found in specified environment |
 | 408 | Timeout | Request timeout |
 | 422 | Validation Error | Invalid backup data or password |
 | 429 | Rate Limit | Too many requests |
@@ -785,6 +903,21 @@ MIT License - see [LICENSE](LICENSE)
 Contributions are welcome! Please open an issue or submit a pull request.
 
 ## 📝 Changelog
+
+### v3.0.0 (Breaking Changes)
+- 🚨 **BREAKING**: Environment is now **REQUIRED** for all configuration operations
+- 🚨 **BREAKING**: `create()` signature changed - environment is now second parameter after value
+- 🚨 **BREAKING**: `read()` requires environment parameter
+- 🚨 **BREAKING**: `update()` requires environment parameter (environment cannot be changed)
+- 🚨 **BREAKING**: `delete()` requires environment parameter
+- 🚨 **BREAKING**: `exists()` requires environment parameter
+- 🚨 **BREAKING**: `bulkRead()` now accepts `Array<{key, environment}>` instead of `string[]`
+- 🚨 **BREAKING**: `bulkDelete()` now accepts `Array<{key, environment}>` instead of `string[]`
+- 🚨 **BREAKING**: `bulkCreate()` requires environment field in each config object
+- ✨ **NEW**: Support for same key in different environments
+- ✨ **NEW**: Configurations are uniquely identified by (key + environment) pair
+- 📚 Enhanced documentation with multi-environment examples
+- 🔧 Migration guide for v2.x users
 
 ### v2.3.3
 - ✨ Added encrypted backup operations (`createBackup`, `importBackup`)
@@ -815,11 +948,67 @@ Contributions are welcome! Please open an issue or submit a pull request.
 - ✅ Cluster support
 - ✅ TypeScript definitions
 
----
+## 🔄 Migration Guide from v2.x to v3.0
+
+### Before (v2.x)
+
+```typescript
+// Create with optional environment
+await client.create('database', { host: 'localhost' }, {
+  environment: 'production'
+});
+
+// Read without environment
+const config = await client.read('database');
+
+// Update without environment
+await client.update('database', { host: 'newhost' });
+
+// Delete without environment
+await client.delete('database');
+
+// Bulk operations
+await client.bulkRead(['key1', 'key2']);
+await client.bulkDelete(['key1', 'key2']);
+```
+
+### After (v3.0)
+
+```typescript
+// Create with REQUIRED environment
+await client.create(
+  'database',
+  { host: 'localhost' },
+  'production',  // REQUIRED
+  'config'       // optional category
+);
+
+// Read with REQUIRED environment
+const config = await client.read('database', 'production');
+
+// Update with REQUIRED environment
+await client.update('database', 'production', { host: 'newhost' });
+
+// Delete with REQUIRED environment
+await client.delete('database', 'production');
+
+// Bulk operations with environment
+await client.bulkRead([
+  { key: 'key1', environment: 'production' },
+  { key: 'key2', environment: 'production' },
+]);
+
+await client.bulkDelete([
+  { key: 'key1', environment: 'production' },
+  { key: 'key2', environment: 'staging' },
+]);
+```
+
+***
 
 **OpenSecureConf TypeScript Client** - Secure configuration management made simple.
 
-**Version**: 2.3.3  
+**Version**: 3.0.0  
 **Author**: Apioli <alessandro.pioli+apioli-npm@gmail.com>  
 **Repository**: [GitHub](https://github.com/lordraw77/OpenSecureConf/tree/main/client-js)  
 **Support**: [GitHub Issues](https://github.com/lordraw77/OpenSecureConf/issues)

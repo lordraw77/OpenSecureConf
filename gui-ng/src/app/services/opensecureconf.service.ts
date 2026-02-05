@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { Observable, from, BehaviorSubject } from 'rxjs';
-import OpenSecureConfClient, { 
-  ConfigEntry, 
-  ClusterStatus 
+import OpenSecureConfClient, {
+  ConfigEntry,
+  ClusterStatus
 } from 'opensecureconf-client';
 
 declare global {
@@ -63,20 +63,54 @@ export class OpenSecureConfService {
     return from(this.client.list(filters));
   }
 
-  getConfig(key: string): Observable<ConfigEntry> {
-    return from(this.client.read(key));
+  /**
+   * Get a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   */
+  getConfig(key: string, environment: string): Observable<ConfigEntry> {
+    return from(this.client.read(key, environment));
   }
 
-  createConfig(key: string, value: any, options?: { category?: string; environment?: string }): Observable<ConfigEntry> {
-    return from(this.client.create(key, value, options));
+  /**
+   * Create a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param value Configuration value
+   * @param environment Environment identifier (REQUIRED)
+   * @param category Optional category
+   */
+  createConfig(
+    key: string,
+    value: any,
+    environment: string,
+    category?: string
+  ): Observable<ConfigEntry> {
+    return from(this.client.create(key, value, environment, category));
   }
 
-  updateConfig(key: string, value: any, options?: { category?: string; environment?: string }): Observable<ConfigEntry> {
-    return from(this.client.update(key, value, options));
+  /**
+   * Update a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   * @param value New configuration value
+   * @param category Optional new category
+   */
+  updateConfig(
+    key: string,
+    environment: string,
+    value: any,
+    category?: string
+  ): Observable<ConfigEntry> {
+    return from(this.client.update(key, environment, value, category));
   }
 
-  deleteConfig(key: string): Observable<{ message: string }> {
-    return from(this.client.delete(key));
+  /**
+   * Delete a configuration (environment is REQUIRED)
+   * @param key Configuration key
+   * @param environment Environment identifier (REQUIRED)
+   */
+  deleteConfig(key: string, environment: string): Observable<{ message: string }> {
+    return from(this.client.delete(key, environment));
   }
 
   getClusterStatus(): Observable<ClusterStatus> {
@@ -112,19 +146,40 @@ export class OpenSecureConfService {
     return from(this.client.listEnvironments());
   }
 
-  bulkDelete(keys: string[]): Observable<{ deleted: string[]; failed: Array<{ key: string; error: any }> }> {
-    return from(this.client.bulkDelete(keys, true));
+  /**
+   * Bulk delete configurations (environment REQUIRED for each)
+   */
+  bulkDelete(
+    items: Array<{ key: string; environment: string }>
+  ): Observable<{
+    deleted: Array<{ key: string; environment: string }>;
+    failed: Array<{ key: string; environment: string; error: any }>;
+  }> {
+    return from(this.client.bulkDelete(items, true));
   }
 
   count(options?: { category?: string; environment?: string }): Observable<number> {
     return from(this.client.count(options));
   }
 
-  exists(key: string): Observable<boolean> {
-    return from(this.client.exists(key));
+  /**
+   * Check if a configuration exists in specific environment
+   */
+  exists(key: string, environment: string): Observable<boolean> {
+    return from(this.client.exists(key, environment));
   }
 
-  bulkCreate(configs: Array<{ key: string; value: any; category?: string; environment?: string; }>): Observable<ConfigEntry[]> {
+  /**
+   * Bulk create configurations (environment REQUIRED for each)
+   */
+  bulkCreate(
+    configs: Array<{
+      key: string;
+      value: any;
+      environment: string;
+      category?: string;
+    }>
+  ): Observable<ConfigEntry[]> {
     return from(this.client.bulkCreate(configs, true));
   }
 }
