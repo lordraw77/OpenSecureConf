@@ -7,7 +7,7 @@ describe('OpenSecureConfClient', () => {
     client = new OpenSecureConfClient({
       baseUrl: 'http://localhost:9000',
       userKey: 'my-secure-encryption-key',
-      apiKey: 'cluster-secret-key-123',
+      apiKey: '123456789-api-key',
     });
   });
 

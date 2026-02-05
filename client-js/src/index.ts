@@ -4,7 +4,7 @@
  * A comprehensive REST API client for OpenSecureConf - Encrypted configuration
  * management system with cluster support and HTTPS/SSL.
  * 
- * @version 2.3.1
+ * @version 2.3.3
  * @license MIT
  */
 
@@ -49,6 +49,25 @@ export interface OpenSecureConfOptions {
   apiKey?: string;
   timeout?: number;
   rejectUnauthorized?: boolean; // For self-signed certificates (Node.js only)
+}
+/**
+ * Backup response interface
+ */
+export interface BackupResponse {
+  backup_data: string;
+  backup_timestamp: string;
+  backup_id: string;
+  total_configs: number;
+}
+
+/**
+ * Import response interface
+ */
+export interface ImportResponse {
+  message: string;
+  imported_count: number;
+  skipped_count?: number;
+  errors?: Array<{ key: string; error: string }>;
 }
 
 /**
@@ -584,6 +603,330 @@ export class OpenSecureConfClient {
 
     return { deleted, failed };
   }
+    /**
+   * Create an encrypted backup of all configurations
+   * 
+   * @param backupPassword - Password to encrypt the backup (required)
+   * @param options - Optional filters for category and environment
+   * 
+   * @example
+   * // Backup all configurations
+   * const backup = await client.createBackup('my-secure-password-123');
+   * console.log(backup.backup_data);      // Encrypted backup string
+   * console.log(backup.total_configs);    // Number of configs backed up
+   * console.log(backup.backup_timestamp); // ISO timestamp
+   * 
+   * @example
+   * // Backup specific environment
+   * const prodBackup = await client.createBackup('password123', {
+   *   environment: 'production'
+   * });
+   * 
+   * @example
+   * // Backup specific category
+   * const dbBackup = await client.createBackup('password123', {
+   *   category: 'database'
+   * });
+   * 
+   * @example
+   * // Backup specific category and environment
+   * const backup = await client.createBackup('password123', {
+   *   category: 'database',
+   *   environment: 'production'
+   * });
+   */
+  async createBackup(
+    backupPassword: string,
+    options?: { category?: string; environment?: string }
+  ): Promise<BackupResponse> {
+    if (!backupPassword || backupPassword.length < 8) {
+      throw new Error('backupPassword must be at least 8 characters long');
+    }
+
+    const params = new URLSearchParams();
+    if (options?.category) {
+      params.append('category', options.category);
+    }
+    if (options?.environment) {
+      params.append('environment', options.environment);
+    }
+
+    const queryString = params.toString();
+    const endpoint = queryString ? `/backup?${queryString}` : '/backup';
+
+    const url = `${this.baseUrl}${endpoint}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-Key': this.userKey,
+      'X-Backup-Password': backupPassword,
+    };
+
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const fetchOptions: RequestInit = {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+      };
+
+      if (this.httpsAgent) {
+        (fetchOptions as any).agent = this.httpsAgent;
+      }
+
+      const response = await fetch(url, fetchOptions);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let errorDetail: string | undefined;
+        try {
+          const errorData = (await response.json()) as any;
+          errorDetail = errorData.detail || errorData.message;
+        } catch {
+          errorDetail = response.statusText;
+        }
+
+        throw new OpenSecureConfError(
+          response.status,
+          `HTTP ${response.status}: ${response.statusText}`,
+          errorDetail
+        );
+      }
+
+      const data = await response.json();
+      return data as BackupResponse;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof OpenSecureConfError) {
+        throw error;
+      }
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new OpenSecureConfError(
+            408,
+            'Request timeout',
+            `Request exceeded ${this.timeout}ms`
+          );
+        }
+
+        if (error.message.includes('certificate') || error.message.includes('SSL')) {
+          throw new OpenSecureConfError(
+            0,
+            'SSL/TLS error',
+            `${error.message}. For self-signed certificates, set rejectUnauthorized: false`
+          );
+        }
+
+        throw new OpenSecureConfError(0, 'Network error', error.message);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Import configurations from an encrypted backup
+   * 
+   * @param backupData - Encrypted backup string from createBackup()
+   * @param backupPassword - Password used to encrypt the backup (required)
+   * @param overwrite - If true, overwrite existing configurations (default: false)
+   * 
+   * @example
+   * // Import backup without overwriting existing configs
+   * const result = await client.importBackup(
+   *   backup.backup_data,
+   *   'my-secure-password-123'
+   * );
+   * console.log(result.imported_count); // Number of configs imported
+   * console.log(result.skipped_count);  // Number of configs skipped
+   * 
+   * @example
+   * // Import backup and overwrite existing configs
+   * const result = await client.importBackup(
+   *   backup.backup_data,
+   *   'my-secure-password-123',
+   *   true
+   * );
+   * console.log(result.message);        // Success message
+   * console.log(result.imported_count); // Total imported
+   */
+  async importBackup(
+    backupData: string,
+    backupPassword: string,
+    overwrite: boolean = false
+  ): Promise<ImportResponse> {
+    if (!backupPassword || backupPassword.length < 8) {
+      throw new Error('backupPassword must be at least 8 characters long');
+    }
+
+    if (!backupData || backupData.trim().length === 0) {
+      throw new Error('backupData cannot be empty');
+    }
+
+    const url = `${this.baseUrl}/import`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-Key': this.userKey,
+      'X-Backup-Password': backupPassword,
+    };
+
+    if (this.apiKey) {
+      headers['X-API-Key'] = this.apiKey;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const fetchOptions: RequestInit = {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          backup_data: backupData,
+          overwrite: overwrite,
+        }),
+        signal: controller.signal,
+      };
+
+      if (this.httpsAgent) {
+        (fetchOptions as any).agent = this.httpsAgent;
+      }
+
+      const response = await fetch(url, fetchOptions);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        let errorDetail: string | undefined;
+        try {
+          const errorData = (await response.json()) as any;
+          errorDetail = errorData.detail || errorData.message;
+        } catch {
+          errorDetail = response.statusText;
+        }
+
+        throw new OpenSecureConfError(
+          response.status,
+          `HTTP ${response.status}: ${response.statusText}`,
+          errorDetail
+        );
+      }
+
+      const data = await response.json();
+      return data as ImportResponse;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof OpenSecureConfError) {
+        throw error;
+      }
+
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          throw new OpenSecureConfError(
+            408,
+            'Request timeout',
+            `Request exceeded ${this.timeout}ms`
+          );
+        }
+
+        if (error.message.includes('certificate') || error.message.includes('SSL')) {
+          throw new OpenSecureConfError(
+            0,
+            'SSL/TLS error',
+            `${error.message}. For self-signed certificates, set rejectUnauthorized: false`
+          );
+        }
+
+        throw new OpenSecureConfError(0, 'Network error', error.message);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Create backup and save to file (Node.js only)
+   * 
+   * @param backupPassword - Password to encrypt the backup
+   * @param filePath - Path where to save the backup file
+   * @param options - Optional filters for category and environment
+   * 
+   * @example
+   * // Save full backup to file
+   * await client.backupToFile('password123', './backup-2026-02-05.json');
+   * 
+   * @example
+   * // Save production backup
+   * await client.backupToFile('password123', './prod-backup.json', {
+   *   environment: 'production'
+   * });
+   */
+  async backupToFile(
+    backupPassword: string,
+    filePath: string,
+    options?: { category?: string; environment?: string }
+  ): Promise<BackupResponse> {
+    if (!isNodeEnvironment()) {
+      throw new Error('backupToFile is only available in Node.js environment');
+    }
+
+    const backup = await this.createBackup(backupPassword, options);
+
+    try {
+      const fs = require('fs');
+      fs.writeFileSync(filePath, JSON.stringify(backup, null, 2), 'utf-8');
+      return backup;
+    } catch (error) {
+      throw new Error(`Failed to write backup to file: ${error}`);
+    }
+  }
+
+  /**
+   * Import backup from file (Node.js only)
+   * 
+   * @param backupPassword - Password used to encrypt the backup
+   * @param filePath - Path to the backup file
+   * @param overwrite - If true, overwrite existing configurations
+   * 
+   * @example
+   * // Import backup from file
+   * const result = await client.importFromFile(
+   *   'password123',
+   *   './backup-2026-02-05.json'
+   * );
+   * console.log(result.imported_count);
+   */
+  async importFromFile(
+    backupPassword: string,
+    filePath: string,
+    overwrite: boolean = false
+  ): Promise<ImportResponse> {
+    if (!isNodeEnvironment()) {
+      throw new Error('importFromFile is only available in Node.js environment');
+    }
+
+    try {
+      const fs = require('fs');
+      const fileContent = fs.readFileSync(filePath, 'utf-8');
+      const backup = JSON.parse(fileContent) as BackupResponse;
+
+      return await this.importBackup(backup.backup_data, backupPassword, overwrite);
+    } catch (error) {
+      if (error instanceof OpenSecureConfError) {
+        throw error;
+      }
+      throw new Error(`Failed to import backup from file: ${error}`);
+    }
+  }
 }
+
+
 
 export default OpenSecureConfClient;

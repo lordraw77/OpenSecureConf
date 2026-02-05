@@ -61,8 +61,5 @@
   },
   "engines": {
     "node": ">=16.0.0"
-  },
-  "dependencies": {
-    "opensecureconf-client": "file:opensecureconf-client-1.0.0.tgz"
-  }
+  } 
 }
