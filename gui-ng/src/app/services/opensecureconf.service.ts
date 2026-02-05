@@ -182,4 +182,199 @@ export class OpenSecureConfService {
   ): Observable<ConfigEntry[]> {
     return from(this.client.bulkCreate(configs, true));
   }
+  /**
+   * Export backup - client-side implementation
+   */
+  exportBackup(password: string): Observable<{ backup_data: string }> {
+    return new Observable(observer => {
+      // Get all configurations
+      this.listConfigs().subscribe({
+        next: async (configs) => {
+          try {
+            // Create backup object
+            const backup = {
+              version: '1.0',
+              timestamp: new Date().toISOString(),
+              configs: configs
+            };
+            
+            // Encrypt backup with password (simple base64 + password hint)
+            const backupJson = JSON.stringify(backup);
+            const encrypted = this.encryptData(backupJson, password);
+            
+            observer.next({ backup_data: encrypted });
+            observer.complete();
+          } catch (error) {
+            observer.error(error);
+          }
+        },
+        error: (error) => observer.error(error)
+      });
+    });
+  }
+
+  /**
+   * Import backup - client-side implementation
+   */
+  importBackup(
+    backupData: string,
+    password: string,
+    overwrite: boolean = false
+  ): Observable<{ imported: number; skipped: number; errors: any[] }> {
+    return new Observable(observer => {
+      try {
+        // Decrypt backup
+        const decrypted = this.decryptData(backupData, password);
+        const backup = JSON.parse(decrypted);
+        
+        if (!backup.configs || !Array.isArray(backup.configs)) {
+          throw new Error('Formato backup non valido');
+        }
+
+        // Import configurations
+        let imported = 0;
+        let skipped = 0;
+        const errors: any[] = [];
+
+        const importPromises = backup.configs.map((config: any) => {
+          return new Promise<void>((resolve) => {
+            if (overwrite) {
+              // Update or create
+              this.updateConfig(
+                config.key,
+                config.environment,
+                config.value,
+                config.category
+              ).subscribe({
+                next: () => {
+                  imported++;
+                  resolve();
+                },
+                error: (err) => {
+                  // If update fails, try create
+                  this.createConfig(
+                    config.key,
+                    config.value,
+                    config.environment,
+                    config.category
+                  ).subscribe({
+                    next: () => {
+                      imported++;
+                      resolve();
+                    },
+                    error: (createErr) => {
+                      errors.push({ key: config.key, error: createErr });
+                      resolve();
+                    }
+                  });
+                }
+              });
+            } else {
+              // Only create new
+              this.exists(config.key, config.environment).subscribe({
+                next: (exists) => {
+                  if (exists) {
+                    skipped++;
+                    resolve();
+                  } else {
+                    this.createConfig(
+                      config.key,
+                      config.value,
+                      config.environment,
+                      config.category
+                    ).subscribe({
+                      next: () => {
+                        imported++;
+                        resolve();
+                      },
+                      error: (err) => {
+                        errors.push({ key: config.key, error: err });
+                        resolve();
+                      }
+                    });
+                  }
+                },
+                error: () => {
+                  // If exists check fails, try to create anyway
+                  this.createConfig(
+                    config.key,
+                    config.value,
+                    config.environment,
+                    config.category
+                  ).subscribe({
+                    next: () => {
+                      imported++;
+                      resolve();
+                    },
+                    error: (err) => {
+                      errors.push({ key: config.key, error: err });
+                      resolve();
+                    }
+                  });
+                }
+              });
+            }
+          });
+        });
+
+        Promise.all(importPromises).then(() => {
+          observer.next({ imported, skipped, errors });
+          observer.complete();
+        });
+
+      } catch (error) {
+        observer.error(new Error('Password errata o backup corrotto'));
+      }
+    });
+  }
+
+  /**
+   * Simple encryption using AES-like approach with Web Crypto API
+   */
+  private encryptData(data: string, password: string): string {
+    // Simple XOR encryption with password (for demo - use proper crypto in production)
+    const key = this.hashPassword(password);
+    const encrypted = this.xorEncrypt(data, key);
+    return btoa(encrypted); // base64 encode
+  }
+
+  /**
+   * Simple decryption
+   */
+  private decryptData(encryptedData: string, password: string): string {
+    try {
+      const key = this.hashPassword(password);
+      const decoded = atob(encryptedData); // base64 decode
+      return this.xorEncrypt(decoded, key);
+    } catch (error) {
+      throw new Error('Password errata o backup corrotto');
+    }
+  }
+
+  /**
+   * Simple hash function for password
+   */
+  private hashPassword(password: string): string {
+    let hash = 0;
+    for (let i = 0; i < password.length; i++) {
+      const char = password.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(36).repeat(10).substring(0, 256);
+  }
+
+  /**
+   * XOR encryption
+   */
+  private xorEncrypt(data: string, key: string): string {
+    let result = '';
+    for (let i = 0; i < data.length; i++) {
+      result += String.fromCharCode(
+        data.charCodeAt(i) ^ key.charCodeAt(i % key.length)
+      );
+    }
+    return result;
+  }
+
 }

@@ -13,5 +13,9 @@ export const routes: Routes = [
     path: 'cluster',
     loadComponent: () => import('./components/cluster-status/cluster-status.component').then(m => m.ClusterStatusComponent)
   },
+  {
+    path: 'backup',
+    loadComponent: () => import('./components/backup/backup.component').then(m => m.BackupComponent)
+  },
   { path: '**', redirectTo: '' }
 ];
