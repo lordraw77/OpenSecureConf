@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputTextareaModule } from 'primeng/inputtextarea';
+import { DropdownModule } from 'primeng/dropdown';
 import { ToastModule } from 'primeng/toast';
 import { MessageService } from 'primeng/api';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
@@ -17,6 +18,7 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
     ButtonModule,
     InputTextModule,
     InputTextareaModule,
+    DropdownModule,
     ToastModule
   ],
   providers: [MessageService],
@@ -38,7 +40,31 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
           <div class="card-body">
             <div class="info-box">
               <i class="pi pi-info-circle"></i>
-              <span>Crea un backup crittografato di tutte le configurazioni</span>
+              <span>Crea un backup crittografato delle configurazioni selezionate</span>
+            </div>
+
+            <div class="field">
+              <label for="exportEnvironment">Environment (opzionale)</label>
+              <p-dropdown
+                id="exportEnvironment"
+                [options]="environments"
+                [(ngModel)]="selectedExportEnvironment"
+                placeholder="Tutti gli environment"
+                [showClear]="true"
+                styleClass="w-full"
+              ></p-dropdown>
+            </div>
+
+            <div class="field">
+              <label for="exportCategory">Categoria (opzionale)</label>
+              <p-dropdown
+                id="exportCategory"
+                [options]="categories"
+                [(ngModel)]="selectedExportCategory"
+                placeholder="Tutte le categorie"
+                [showClear]="true"
+                styleClass="w-full"
+              ></p-dropdown>
             </div>
 
             <div class="field">
@@ -62,6 +88,16 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
               [disabled]="!exportPassword || isExporting"
               [loading]="isExporting"
             ></button>
+
+            <div *ngIf="selectedExportEnvironment || selectedExportCategory" class="filter-info">
+              <small>
+                <i class="pi pi-filter"></i>
+                Filtri attivi: 
+                <span *ngIf="selectedExportEnvironment">Environment: <strong>{{ selectedExportEnvironment }}</strong></span>
+                <span *ngIf="selectedExportEnvironment && selectedExportCategory"> | </span>
+                <span *ngIf="selectedExportCategory">Categoria: <strong>{{ selectedExportCategory }}</strong></span>
+              </small>
+            </div>
           </div>
         </div>
 
@@ -277,6 +313,18 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       flex-shrink: 0;
     }
 
+    .filter-info {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      background: var(--surface-100);
+      border-radius: 4px;
+      color: var(--text-color-secondary);
+    }
+
+    .filter-info i {
+      margin-right: 0.5rem;
+    }
+
     .field {
       margin-bottom: 1.5rem;
     }
@@ -351,6 +399,10 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       .w-full {
         width: 100%;
       }
+
+      .p-dropdown {
+        width: 100%;
+      }
     }
   `]
 })
@@ -367,12 +419,42 @@ export class BackupComponent implements OnInit {
   fileImportPassword = '';
   fileOverwrite = false;
 
+  // Filtri export
+  selectedExportEnvironment: string | null = null;
+  selectedExportCategory: string | null = null;
+  environments: string[] = [];
+  categories: string[] = [];
+
   constructor(
     private oscService: OpenSecureConfService,
     private messageService: MessageService
   ) {}
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    this.loadFilters();
+  }
+
+  loadFilters(): void {
+    // Carica environments
+    this.oscService.listEnvironments().subscribe({
+      next: (envs) => {
+        this.environments = envs;
+      },
+      error: (error) => {
+        console.error('Errore caricamento environments:', error);
+      }
+    });
+
+    // Carica categorie
+    this.oscService.listCategories().subscribe({
+      next: (cats) => {
+        this.categories = cats;
+      },
+      error: (error) => {
+        console.error('Errore caricamento categorie:', error);
+      }
+    });
+  }
 
   exportBackup(): void {
     if (!this.exportPassword) {
@@ -385,13 +467,28 @@ export class BackupComponent implements OnInit {
     }
 
     this.isExporting = true;
-    this.oscService.exportBackup(this.exportPassword).subscribe({
+
+    const filters: any = {};
+    if (this.selectedExportEnvironment) {
+      filters.environment = this.selectedExportEnvironment;
+    }
+    if (this.selectedExportCategory) {
+      filters.category = this.selectedExportCategory;
+    }
+
+    this.oscService.exportBackup(this.exportPassword, filters).subscribe({
       next: (response) => {
         this.downloadBackup(response.backup_data);
+        
+        let detail = 'Backup creato con successo';
+        if (this.selectedExportEnvironment || this.selectedExportCategory) {
+          detail += ' (filtrato)';
+        }
+        
         this.messageService.add({
           severity: 'success',
           summary: 'Successo',
-          detail: 'Backup creato con successo',
+          detail: detail,
           life: 3000
         });
         this.isExporting = false;
@@ -523,7 +620,18 @@ export class BackupComponent implements OnInit {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
+    
+    // Nome file con filtri se presenti
+    let filename = `backup-${new Date().toISOString().split('T')[0]}`;
+    if (this.selectedExportEnvironment) {
+      filename += `-${this.selectedExportEnvironment}`;
+    }
+    if (this.selectedExportCategory) {
+      filename += `-${this.selectedExportCategory}`;
+    }
+    filename += '.json';
+    
+    link.download = filename;
     link.click();
     window.URL.revokeObjectURL(url);
   }

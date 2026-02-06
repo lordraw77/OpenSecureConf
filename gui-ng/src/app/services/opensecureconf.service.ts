@@ -183,22 +183,26 @@ export class OpenSecureConfService {
     return from(this.client.bulkCreate(configs, true));
   }
   /**
-   * Export backup - client-side implementation
+   * Export backup - client-side implementation with filters
    */
-  exportBackup(password: string): Observable<{ backup_data: string }> {
+  exportBackup(
+    password: string, 
+    filters?: { environment?: string; category?: string }
+  ): Observable<{ backup_data: string }> {
     return new Observable(observer => {
-      // Get all configurations
-      this.listConfigs().subscribe({
+      // Get configurations with filters
+      this.listConfigs(filters).subscribe({
         next: async (configs) => {
           try {
             // Create backup object
             const backup = {
               version: '1.0',
               timestamp: new Date().toISOString(),
+              filters: filters || {},
               configs: configs
             };
             
-            // Encrypt backup with password (simple base64 + password hint)
+            // Encrypt backup with password
             const backupJson = JSON.stringify(backup);
             const encrypted = this.encryptData(backupJson, password);
             

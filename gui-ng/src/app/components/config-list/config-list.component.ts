@@ -68,7 +68,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
           [value]="configs" 
           [paginator]="true" 
           [rows]="10"
-          [rowsPerPageOptions]="[10, 25, 50]"
+          [rowsPerPageOptions]="[10, 25, 50, 75, 100]"
           [loading]="loading"
           [globalFilterFields]="['key', 'category', 'environment']"
           [tableStyle]="{ 'min-width': '100%' }"
@@ -579,6 +579,213 @@ interface ExtendedConfigEntry extends ConfigEntry {
         transform: translateY(0);
       }
     }
+
+    /* Stilizzazione Paginator */
+    :host ::ng-deep {
+      .p-paginator {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border: none !important;
+        border-radius: 0 0 12px 12px !important;
+        padding: 1rem !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        gap: 1rem !important;
+      }
+
+      .p-paginator .p-paginator-pages,
+      .p-paginator .p-paginator-first,
+      .p-paginator .p-paginator-prev,
+      .p-paginator .p-paginator-next,
+      .p-paginator .p-paginator-last {
+        display: flex !important;
+        align-items: center !important;
+      }
+
+      .p-paginator .p-paginator-page,
+      .p-paginator .p-paginator-first,
+      .p-paginator .p-paginator-prev,
+      .p-paginator .p-paginator-next,
+      .p-paginator .p-paginator-last {
+        background: rgba(255, 255, 255, 0.2) !important;
+        color: white !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        min-width: 2.5rem !important;
+        height: 2.5rem !important;
+        margin: 0 0.25rem !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+      }
+
+      .p-paginator .p-paginator-page:not(.p-disabled):hover,
+      .p-paginator .p-paginator-first:not(.p-disabled):hover,
+      .p-paginator .p-paginator-prev:not(.p-disabled):hover,
+      .p-paginator .p-paginator-next:not(.p-disabled):hover,
+      .p-paginator .p-paginator-last:not(.p-disabled):hover {
+        background: rgba(255, 255, 255, 0.4) !important;
+        border-color: rgba(255, 255, 255, 0.6) !important;
+        transform: translateY(-2px) !important;
+      }
+
+      .p-paginator .p-paginator-page.p-highlight {
+        background: white !important;
+        color: #667eea !important;
+        border-color: white !important;
+        font-weight: 700 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      .p-paginator .p-disabled {
+        opacity: 0.4 !important;
+        cursor: not-allowed !important;
+      }
+
+      /* Dropdown rows per page - centrato */
+      .p-paginator .p-dropdown {
+        background: rgba(255, 255, 255, 0.95) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        border-radius: 8px !important;
+        height: 2.5rem !important;
+        min-width: 4rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      .p-paginator .p-dropdown .p-dropdown-label {
+        color: #667eea !important;
+        font-weight: 600 !important;
+        padding: 0.5rem !important;
+        text-align: center !important;
+      }
+
+      .p-paginator .p-dropdown .p-dropdown-trigger {
+        color: #667eea !important;
+        width: 2rem !important;
+      }
+
+      .p-paginator .p-dropdown:hover {
+        background: white !important;
+        border-color: white !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+      }
+
+      /* Text nel paginator */
+      .p-paginator .p-paginator-current {
+        color: white !important;
+        font-weight: 500 !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 8px !important;
+        margin: 0 0.5rem !important;
+      }
+
+      .p-paginator .p-paginator-rpp-options {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
+      }
+
+      /* Label "Items per page" */
+      .p-paginator-rpp-options .p-dropdown {
+        order: 2 !important;
+      }
+
+      .p-paginator-left-content,
+      .p-paginator-right-content {
+        color: white !important;
+      }
+
+      /* Stilizzazione Dialog Footer */
+      .p-dialog .p-dialog-footer {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border-top: none !important;
+        padding: 1.25rem 1.5rem !important;
+        border-radius: 0 0 12px 12px !important;
+        display: flex !important;
+        justify-content: flex-end !important;
+        gap: 0.75rem !important;
+      }
+
+      .p-dialog .p-dialog-footer .p-button {
+        background: rgba(255, 255, 255, 0.95) !important;
+        color: #667eea !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+      }
+
+      .p-dialog .p-dialog-footer .p-button:hover {
+        background: white !important;
+        border-color: white !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      .p-dialog .p-dialog-footer .p-button.p-button-text {
+        background: transparent !important;
+        color: white !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+      }
+
+      .p-dialog .p-dialog-footer .p-button.p-button-text:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-color: rgba(255, 255, 255, 0.6) !important;
+      }
+
+      /* Stilizzazione ConfirmDialog Footer */
+      .p-confirm-dialog .p-dialog-footer {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border-top: none !important;
+        padding: 1.25rem 1.5rem !important;
+        border-radius: 0 0 12px 12px !important;
+        display: flex !important;
+        justify-content: flex-end !important;
+        gap: 0.75rem !important;
+      }
+
+      .p-confirm-dialog .p-dialog-footer .p-button {
+        background: rgba(255, 255, 255, 0.95) !important;
+        color: #667eea !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 8px !important;
+        transition: all 0.3s ease !important;
+      }
+
+      .p-confirm-dialog .p-dialog-footer .p-button:hover {
+        background: white !important;
+        border-color: white !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      .p-confirm-dialog .p-dialog-footer .p-button.p-button-text {
+        background: transparent !important;
+        color: white !important;
+        border: 1px solid rgba(255, 255, 255, 0.4) !important;
+      }
+
+      .p-confirm-dialog .p-dialog-footer .p-button.p-button-text:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-color: rgba(255, 255, 255, 0.6) !important;
+      }
+
+      /* Bottone conferma - evidenziato */
+      .p-confirm-dialog .p-dialog-footer .p-confirm-dialog-accept {
+        background: white !important;
+        color: #667eea !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+      }
+
+      .p-confirm-dialog .p-dialog-footer .p-confirm-dialog-accept:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+      }
+    }
   `]
 })
 export class ConfigListComponent implements OnInit {
@@ -705,7 +912,6 @@ export class ConfigListComponent implements OnInit {
     this.dialogMode = 'edit';
     this.currentConfig = { ...config };
     this.currentConfigValueString = JSON.stringify(config.value, null, 2);
-    // Memorizza l'environment originale per l'update
     this.originalEnvironment = config.environment;
     this.displayDialog = true;
   }
@@ -721,7 +927,6 @@ export class ConfigListComponent implements OnInit {
       return;
     }
 
-    // Validazione environment obbligatorio
     if (!this.currentConfig.environment) {
       this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'L\'ambiente è obbligatorio' });
       return;
@@ -736,14 +941,12 @@ export class ConfigListComponent implements OnInit {
     }
 
     const operation = this.dialogMode === 'create'
-      // Create: environment è il terzo parametro
       ? this.oscService.createConfig(
           this.currentConfig.key,
           value,
           this.currentConfig.environment,
           this.currentConfig.category
         )
-      // Update: environment è il secondo parametro (usa l'originale)
       : this.oscService.updateConfig(
           this.currentConfig.key!,
           this.originalEnvironment,
@@ -780,7 +983,6 @@ export class ConfigListComponent implements OnInit {
       acceptLabel: 'Sì',
       rejectLabel: 'No',
       accept: () => {
-        // Delete richiede environment come secondo parametro
         this.oscService.deleteConfig(config.key, config.environment).subscribe({
           next: () => {
             this.messageService.add({ severity: 'success', summary: 'Successo', detail: 'Configurazione eliminata' });
