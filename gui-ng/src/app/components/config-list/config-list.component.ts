@@ -6,6 +6,7 @@ import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { DialogModule } from 'primeng/dialog';
 import { DropdownModule } from 'primeng/dropdown';
+import { MultiSelectModule } from 'primeng/multiselect';  // ✅ AGGIUNTO
 import { InputTextareaModule } from 'primeng/inputtextarea';
 import { TagModule } from 'primeng/tag';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -33,6 +34,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
     InputTextModule,
     DialogModule,
     DropdownModule,
+    MultiSelectModule,  // ✅ AGGIUNTO
     InputTextareaModule,
     TagModule,
     ConfirmDialogModule,
@@ -86,22 +88,49 @@ interface ExtendedConfigEntry extends ConfigEntry {
               </span>
               
               <div class="filter-section">
-                <p-dropdown 
+                <!-- ✅ MODIFICATO: MultiSelect per Categorie -->
+                <p-multiSelect 
                   [options]="categoryOptions" 
-                  [(ngModel)]="selectedCategory"
-                  (onChange)="loadConfigs()"
+                  [(ngModel)]="selectedCategories"
+                  (ngModelChange)="onFilterChange()"
                   placeholder="Filtra per Categoria"
                   [showClear]="true"
-                  styleClass="mr-2">
-                </p-dropdown>
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} categorie selezionate"
+                  styleClass="mr-2"
+                  display="chip">
+                  <ng-template let-value pTemplate="selectedItems">
+                    <div class="flex align-items-center gap-2" *ngIf="value && value.length > 0">
+                      <div *ngFor="let cat of value" class="inline-flex">
+                        <span class="filter-chip">{{ cat }}</span>
+                      </div>
+                      <span *ngIf="value.length > 2" class="more-label">+{{ value.length - 2 }}</span>
+                    </div>
+                    <span *ngIf="!value || value.length === 0">Filtra per Categoria</span>
+                  </ng-template>
+                </p-multiSelect>
                 
-                <p-dropdown 
+
+                <p-multiSelect 
                   [options]="environmentOptions" 
-                  [(ngModel)]="selectedEnvironment"
-                  (onChange)="loadConfigs()"
+                  [(ngModel)]="selectedEnvironments"
+                  (ngModelChange)="onFilterChange()"
                   placeholder="Filtra per Ambiente"
-                  [showClear]="true">
-                </p-dropdown>
+                  [showClear]="true"
+                  [maxSelectedLabels]="2"
+                  selectedItemsLabel="{0} ambienti selezionati"
+                  display="chip">
+                  <ng-template let-value pTemplate="selectedItems">
+                    <div class="flex align-items-center gap-2" *ngIf="value && value.length > 0">
+                      <div *ngFor="let env of value" class="inline-flex">
+                        <span class="filter-chip">{{ env }}</span>
+                      </div>
+                      <span *ngIf="value.length > 2" class="more-label">+{{ value.length - 2 }}</span>
+                    </div>
+                    <span *ngIf="!value || value.length === 0">Filtra per Ambiente</span>
+                  </ng-template>
+                </p-multiSelect>
+
               </div>
             </div>
           </ng-template>
@@ -128,6 +157,19 @@ interface ExtendedConfigEntry extends ConfigEntry {
             </tr>
           </ng-template>
 
+          <ng-template pTemplate="paginatorleft">
+            <div class="paginator-info">
+              <i class="pi pi-list"></i>
+              <span>Totale: <strong>{{ configs.length }}</strong> configurazioni</span>
+            </div>
+          </ng-template>
+          <ng-template pTemplate="paginatorright">
+            <div class="paginator-info">
+              <i class="pi pi-eye"></i>
+              <span>Visualizzate: <strong>{{ dt.first + 1 }}-{{ Math.min(dt.first + dt.rows, configs.length) }}</strong></span>
+            </div>
+          </ng-template>
+
           <ng-template pTemplate="body" let-config>
             <tr>
               <td>
@@ -139,13 +181,20 @@ interface ExtendedConfigEntry extends ConfigEntry {
                 </div>
               </td>
               <td>
-                <span 
-                  *ngIf="config.category" 
-                  class="custom-tag"
-                  [style.background-color]="getColorForValue(config.category)"
-                  [style.color]="getTextColor(getColorForValue(config.category))">
-                  {{ config.category }}
-                </span>
+                <div *ngIf="config.category" class="hierarchical-tags">
+                  <ng-container *ngFor="let part of splitCategory(config.category); let i = index">
+                    <span 
+                      class="custom-tag"
+                      [class.hierarchical-parent]="i === 0"
+                      [class.hierarchical-child]="i > 0"
+                      [style.background-color]="getColorForHierarchy(config.category, i)"
+                      [style.color]="getTextColor(getColorForHierarchy(config.category, i))">
+                      {{ part }}
+                    </span>
+                    <i *ngIf="i < splitCategory(config.category).length - 1" 
+                       class="pi pi-angle-right hierarchy-separator"></i>
+                  </ng-container>
+                </div>
                 <span *ngIf="!config.category" class="text-muted">-</span>
               </td>
               <td>
@@ -211,6 +260,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
         </p-table>
       </div>
 
+      <!-- DIALOG RIMANGONO IDENTICI ... -->
       <p-dialog 
         [(visible)]="displayDialog" 
         [header]="dialogMode === 'create' ? 'Nuova Configurazione' : 'Modifica Configurazione'"
@@ -250,7 +300,9 @@ interface ExtendedConfigEntry extends ConfigEntry {
               type="text" 
               pInputText 
               [(ngModel)]="currentConfig.category"
-              class="w-full" />
+              class="w-full"
+              placeholder="Es: STORAGE oppure LOGGING/DR" />
+            <small class="text-muted">Usa / o \ per creare gerarchie (es: PARENT/CHILD)</small>
           </div>
 
           <div class="field">
@@ -302,12 +354,20 @@ interface ExtendedConfigEntry extends ConfigEntry {
 
             <div class="view-field" *ngIf="viewingConfig.category">
               <strong>Categoria:</strong>
-              <span 
-                class="custom-tag-large"
-                [style.background-color]="getColorForValue(viewingConfig.category)"
-                [style.color]="getTextColor(getColorForValue(viewingConfig.category))">
-                {{ viewingConfig.category }}
-              </span>
+              <div class="hierarchical-tags-large">
+                <ng-container *ngFor="let part of splitCategory(viewingConfig.category); let i = index">
+                  <span 
+                    class="custom-tag-large"
+                    [class.hierarchical-parent]="i === 0"
+                    [class.hierarchical-child]="i > 0"
+                    [style.background-color]="getColorForHierarchy(viewingConfig.category, i)"
+                    [style.color]="getTextColor(getColorForHierarchy(viewingConfig.category, i))">
+                    {{ part }}
+                  </span>
+                  <i *ngIf="i < splitCategory(viewingConfig.category).length - 1" 
+                     class="pi pi-angle-right hierarchy-separator-large"></i>
+                </ng-container>
+              </div>
             </div>
 
             <div class="view-field" *ngIf="viewingConfig.environment">
@@ -411,6 +471,25 @@ interface ExtendedConfigEntry extends ConfigEntry {
     .filter-section { 
       display: flex; 
       gap: 0.5rem; 
+      align-items: center;
+    }
+
+    /* ✅ Stili per MultiSelect Chip */
+    .filter-chip {
+      display: inline-block;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 0.35rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-right: 0.5rem;
+    }
+
+    .more-label {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      font-weight: 600;
     }
     
     .key-text {
@@ -431,6 +510,35 @@ interface ExtendedConfigEntry extends ConfigEntry {
       border-radius: 6px;
     }
 
+    /* Hierarchical Tags */
+    .hierarchical-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .hierarchical-tags-large {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .hierarchy-separator {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      opacity: 0.7;
+      margin: 0 0.25rem;
+    }
+
+    .hierarchy-separator-large {
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      opacity: 0.7;
+      margin: 0 0.25rem;
+    }
+
     .custom-tag {
       display: inline-block;
       padding: 0.5rem 1rem;
@@ -440,6 +548,19 @@ interface ExtendedConfigEntry extends ConfigEntry {
       text-transform: uppercase;
       letter-spacing: 0.5px;
       transition: all 0.2s;
+    }
+
+    .custom-tag.hierarchical-parent {
+      font-weight: 700;
+      padding: 0.5rem 1.25rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    }
+
+    .custom-tag.hierarchical-child {
+      font-weight: 500;
+      opacity: 0.95;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.9rem;
     }
 
     .custom-tag:hover {
@@ -455,6 +576,19 @@ interface ExtendedConfigEntry extends ConfigEntry {
       border-radius: 25px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+    }
+
+    .custom-tag-large.hierarchical-parent {
+      font-weight: 700;
+      padding: 0.75rem 1.75rem;
+      font-size: 1.1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .custom-tag-large.hierarchical-child {
+      font-weight: 500;
+      opacity: 0.95;
+      padding: 0.65rem 1.3rem;
     }
 
     .date-text {
@@ -580,7 +714,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
       }
     }
 
-    /* Stilizzazione Paginator */
+    /* Stilizzazione Paginator - RIMANE IDENTICO */
     :host ::ng-deep {
       .p-paginator {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
@@ -592,6 +726,266 @@ interface ExtendedConfigEntry extends ConfigEntry {
         align-items: center !important;
         gap: 1rem !important;
       }
+
+      .paginator-info {
+        display: flex !important;
+        align-items: center !important;
+        gap: 0.5rem !important;
+        color: white !important;
+        font-weight: 500 !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 8px !important;
+        font-size: 0.875rem !important;
+      }
+      .paginator-info i {
+        font-size: 1rem !important;
+      }
+      .paginator-info strong {
+        font-weight: 700 !important;
+        font-size: 1rem !important;
+      }
+      
+      .p-paginator .p-paginator-content {
+        display: flex !important;
+        align-items: center !important;
+        gap: 1rem !important;
+      }
+      
+      .p-input-icon-left > i:first-of-type {
+        left: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+      }
+
+      .p-input-icon-left > .p-inputtext {
+        padding-left: 2.5rem !important;
+      }
+      .p-multiselect-panel {
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        box-shadow: 0 4px 20px var(--shadow-sm) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header {
+        background: var(--bg-secondary) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        padding: 0.5rem 0.75rem !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter-container {
+        padding: 0.5rem 0.75rem !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter {
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-primary) !important;
+        padding: 0.4rem 0.5rem 0.4rem 2rem !important;
+        font-size: 0.813rem !important;
+        height: 2rem !important;
+      }
+      .p-multiselect-panel .p-multiselect-filter::placeholder {
+        color: var(--text-secondary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter-container .p-multiselect-filter-icon {
+        color: var(--text-secondary) !important;
+        font-size: 0.813rem !important;
+        left: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items {
+        background: var(--card-bg) !important;
+        padding: 0.5rem 0 !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item {
+        color: var(--text-primary) !important;
+        background: transparent !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item:not(.p-disabled):hover {
+        background: var(--bg-secondary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight {
+        background: rgba(102, 126, 234, 0.15) !important;
+        color: #667eea !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header .p-multiselect-close {
+        color: var(--text-primary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header .p-multiselect-close:hover {
+        background: var(--bg-secondary) !important;
+        color: #667eea !important;
+      }
+
+      /* Checkbox styling per il tema */
+      .p-multiselect-panel .p-checkbox .p-checkbox-box {
+        background: var(--card-bg) !important;
+        border: 2px solid var(--border-color) !important;
+      }
+
+      .p-multiselect-panel .p-checkbox .p-checkbox-box.p-highlight {
+        background: #667eea !important;
+        border-color: #667eea !important;
+      }
+
+      .p-multiselect-panel .p-checkbox .p-checkbox-box:hover {
+        border-color: #667eea !important;
+      }
+
+      /* Empty message */
+      .p-multiselect-panel .p-multiselect-empty-message {
+        color: var(--text-secondary) !important;
+      }
+
+      /* Icona lente campo di ricerca principale */
+      .p-input-icon-left > i:first-of-type {
+        left: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+      }
+
+      .p-input-icon-left > .p-inputtext {
+        padding-left: 2.5rem !important;
+      }
+
+      .p-multiselect {
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-primary) !important;
+      }
+
+      .p-multiselect:not(.p-disabled):hover {
+        border-color: #667eea !important;
+      }
+
+      .p-multiselect:not(.p-disabled).p-focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
+      }
+
+      .p-multiselect .p-multiselect-label {
+        color: var(--text-primary) !important;
+        background: transparent !important;
+      }
+
+      .p-multiselect .p-multiselect-label.p-placeholder {
+        color: var(--text-secondary) !important;
+      }
+
+      .p-multiselect .p-multiselect-trigger {
+        color: var(--text-primary) !important;
+      }
+
+      /* Chips selezionati dentro il multiselect chiuso */
+      .p-multiselect .p-multiselect-token {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+      }
+
+      .p-multiselect .p-multiselect-token .p-multiselect-token-icon {
+        color: white !important;
+      }
+
+      /* ✅ MultiSelect Panel aperto - Segue il tema */
+      .p-multiselect-panel {
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        box-shadow: 0 4px 20px var(--shadow-sm) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header {
+        background: var(--bg-secondary) !important;
+        border-bottom: 1px solid var(--border-color) !important;
+        padding: 0.5rem 0.75rem !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter {
+        background: var(--card-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-primary) !important;
+        padding: 0.4rem 0.5rem 0.4rem 2rem !important;
+        font-size: 0.813rem !important;
+        height: 2rem !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter::placeholder {
+        color: var(--text-secondary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-filter-container .p-multiselect-filter-icon {
+        color: var(--text-secondary) !important;
+        font-size: 0.813rem !important;
+        left: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items {
+        background: var(--card-bg) !important;
+        padding: 0.5rem 0 !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item {
+        color: var(--text-primary) !important;
+        background: transparent !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item:not(.p-disabled):hover {
+        background: var(--bg-secondary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-items .p-multiselect-item.p-highlight {
+        background: rgba(102, 126, 234, 0.15) !important;
+        color: #667eea !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header .p-multiselect-close {
+        color: var(--text-primary) !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-header .p-multiselect-close:hover {
+        background: var(--bg-secondary) !important;
+        color: #667eea !important;
+      }
+
+      /* Checkbox styling per il tema */
+      .p-multiselect-panel .p-checkbox .p-checkbox-box {
+        background: var(--card-bg) !important;
+        border: 2px solid var(--border-color) !important;
+      }
+
+      .p-multiselect-panel .p-checkbox .p-checkbox-box.p-highlight {
+        background: #667eea !important;
+        border-color: #667eea !important;
+      }
+
+      .p-multiselect-panel .p-checkbox .p-checkbox-box:hover {
+        border-color: #667eea !important;
+      }
+
+      .p-multiselect-panel .p-multiselect-empty-message {
+        color: var(--text-secondary) !important;
+      }
+
+      /* Icona lente campo di ricerca principale */
+      .p-input-icon-left > i:first-of-type {
+        left: 0.75rem !important;
+        top: 50% !important;
+        transform: translateY(-50%) !important;
+      }
+
+      .p-input-icon-left > .p-inputtext {
+        padding-left: 2.5rem !important;
+      }
+
 
       .p-paginator .p-paginator-pages,
       .p-paginator .p-paginator-first,
@@ -640,7 +1034,6 @@ interface ExtendedConfigEntry extends ConfigEntry {
         cursor: not-allowed !important;
       }
 
-      /* Dropdown rows per page - centrato */
       .p-paginator .p-dropdown {
         background: rgba(255, 255, 255, 0.95) !important;
         border: 1px solid rgba(255, 255, 255, 0.3) !important;
@@ -670,7 +1063,6 @@ interface ExtendedConfigEntry extends ConfigEntry {
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
       }
 
-      /* Text nel paginator */
       .p-paginator .p-paginator-current {
         color: white !important;
         font-weight: 500 !important;
@@ -686,7 +1078,6 @@ interface ExtendedConfigEntry extends ConfigEntry {
         gap: 0.5rem !important;
       }
 
-      /* Label "Items per page" */
       .p-paginator-rpp-options .p-dropdown {
         order: 2 !important;
       }
@@ -774,7 +1165,6 @@ interface ExtendedConfigEntry extends ConfigEntry {
         border-color: rgba(255, 255, 255, 0.6) !important;
       }
 
-      /* Bottone conferma - evidenziato */
       .p-confirm-dialog .p-dialog-footer .p-confirm-dialog-accept {
         background: white !important;
         color: #667eea !important;
@@ -789,6 +1179,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
   `]
 })
 export class ConfigListComponent implements OnInit {
+  Math = Math;
   configs: ExtendedConfigEntry[] = [];
   categories: string[] = [];
   environments: string[] = [];
@@ -799,31 +1190,72 @@ export class ConfigListComponent implements OnInit {
     { label: 'Staging', value: 'staging' },
     { label: 'Production', value: 'production' }
   ];
-  
+
   loading = false;
-  selectedCategory: string | null = null;
-  selectedEnvironment: string | null = null;
+  selectedCategories: string[] = [];  // ✅ MODIFICATO: Array invece di string
+  selectedEnvironments: string[] = [];
 
   displayDialog = false;
   displayViewDialog = false;
   dialogMode: 'create' | 'edit' = 'create';
-  
+
   currentConfig: Partial<ConfigEntry> = {};
   currentConfigValueString = '';
   viewingConfig: ExtendedConfigEntry | null = null;
-  
-  // Memorizza l'environment originale per l'edit
+
   private originalEnvironment: string = '';
 
   constructor(
     private oscService: OpenSecureConfService,
     private confirmationService: ConfirmationService,
     private messageService: MessageService
-  ) {}
+  ) { }
 
   ngOnInit() {
     this.loadConfigs();
     this.loadFilters();
+  }
+
+  splitCategory(category: string): string[] {
+    if (!category) return [];
+    const parts = category.split(/[\\\/]/).map(part => part.trim()).filter(part => part.length > 0);
+    return parts.length > 0 ? parts : [category];
+  }
+  /**
+   * Genera colori contrastanti per ogni livello della gerarchia usando palette diverse
+   */
+  getColorForHierarchy(category: string, level: number): string {
+    if (!category) return '#6c757d';
+
+    // Palette di colori per ogni livello (0 = parent, 1 = child, 2 = grandchild, ecc.)
+    const levelPalettes = [
+      // Livello 0 (Parent) - Colori scuri e saturi
+      ['#667eea', '#f093fb', '#43e97b', '#feca57', '#ff6348', '#06b6d4', '#ec4899', '#10b981'],
+
+      // Livello 1 (Child) - Colori complementari
+      ['#4facfe', '#fa709a', '#22c55e', '#fdcb6e', '#ef4444', '#00d2d3', '#764ba2', '#14b8a6'],
+
+      // Livello 2 (Grandchild) - Colori intermedi
+      ['#3b82f6', '#fd79a8', '#16a34a', '#f59e0b', '#dc2626', '#55efc4', '#a29bfe', '#1dd1a1'],
+
+      // Livello 3+ - Altri colori
+      ['#2563eb', '#f093fb', '#15803d', '#d97706', '#b91c1c', '#2dd4bf', '#6c5ce7', '#00b894']
+    ];
+
+    // Seleziona la palette per il livello corrente (ciclica se supera i livelli disponibili)
+    const palette = levelPalettes[level % levelPalettes.length];
+
+    // Genera un hash dalla categoria completa
+    let hash = 2166136261;
+    for (let i = 0; i < category.length; i++) {
+      hash ^= category.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    hash = hash >>> 0;
+
+    // Seleziona un colore dalla palette
+    const index = hash % palette.length;
+    return palette[index];
   }
 
   getCreatedAt(config: any): string | null {
@@ -836,14 +1268,14 @@ export class ConfigListComponent implements OnInit {
 
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
-    
+
     let hash = 2166136261;
     for (let i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
       hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
     hash = hash >>> 0;
-    
+
     const colors = [
       '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
       '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
@@ -853,36 +1285,115 @@ export class ConfigListComponent implements OnInit {
       '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
       '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
     ];
-    
+
     const index = hash % colors.length;
     return colors[index];
   }
 
   getTextColor(backgroundColor: string): string {
+    if (backgroundColor.startsWith('rgb')) {
+      const match = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+      if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.5 ? '#000000' : '#ffffff';
+      }
+    }
+
     const hex = backgroundColor.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
-    
+
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return luminance > 0.5 ? '#000000' : '#ffffff';
   }
 
+  // ✅ MODIFICATO: Gestione multi-categoria
+  // loadConfigs() {
+  //   this.loading = true;
+  //   const filters: any = {};
+
+  //   // Se ci sono più categorie selezionate, filtra lato client dopo il caricamento
+  //   // oppure chiama l'API multiple volte e unisci i risultati
+  //   if (this.selectedCategories && this.selectedCategories.length > 0) {
+  //     // Strategia 1: Filtrare lato client (più semplice)
+  //     this.oscService.listConfigs({}).subscribe({
+  //       next: (configs) => {
+  //         this.configs = (configs as ExtendedConfigEntry[]).filter(config => 
+  //           this.selectedCategories.includes(config.category)
+  //         );
+
+  //         if (this.selectedEnvironment) {
+  //           this.configs = this.configs.filter(config => config.environment === this.selectedEnvironment);
+  //         }
+
+  //         this.loading = false;
+  //       },
+  //       error: (error) => {
+  //         console.error('Error loading configs:', error);
+  //         this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Impossibile caricare le configurazioni' });
+  //         this.loading = false;
+  //       }
+  //     });
+  //   } else {
+  //     // Nessuna categoria selezionata, usa il filtro environment se presente
+  //     if (this.selectedEnvironment) filters.environment = this.selectedEnvironment;
+
+  //     this.oscService.listConfigs(filters).subscribe({
+  //       next: (configs) => {
+  //         this.configs = configs as ExtendedConfigEntry[];
+  //         this.loading = false;
+  //       },
+  //       error: (error) => {
+  //         console.error('Error loading configs:', error);
+  //         this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Impossibile caricare le configurazioni' });
+  //         this.loading = false;
+  //       }
+  //     });
+  //   }
+  // }
+  onFilterChange() {
+    // Piccolo delay per assicurarsi che il modello sia aggiornato
+    setTimeout(() => {
+      this.loadConfigs();
+    }, 0);
+  }
+
   loadConfigs() {
     this.loading = true;
-    const filters: any = {};
-    
-    if (this.selectedCategory) filters.category = this.selectedCategory;
-    if (this.selectedEnvironment) filters.environment = this.selectedEnvironment;
 
-    this.oscService.listConfigs(filters).subscribe({
+    // Carica tutte le configurazioni e filtra lato client
+    this.oscService.listConfigs({}).subscribe({
       next: (configs) => {
-        this.configs = configs as ExtendedConfigEntry[];
+        let filteredConfigs = configs as ExtendedConfigEntry[];
+
+        // Filtra per categorie se selezionate
+        if (this.selectedCategories && this.selectedCategories.length > 0) {
+          filteredConfigs = filteredConfigs.filter(config =>
+            this.selectedCategories.includes(config.category)
+          );
+        }
+
+        // Filtra per ambienti se selezionati
+        if (this.selectedEnvironments && this.selectedEnvironments.length > 0) {
+          filteredConfigs = filteredConfigs.filter(config =>
+            this.selectedEnvironments.includes(config.environment)
+          );
+        }
+
+        this.configs = filteredConfigs;
         this.loading = false;
       },
       error: (error) => {
         console.error('Error loading configs:', error);
-        this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Impossibile caricare le configurazioni' });
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: 'Impossibile caricare le configurazioni'
+        });
         this.loading = false;
       }
     });
@@ -942,34 +1453,34 @@ export class ConfigListComponent implements OnInit {
 
     const operation = this.dialogMode === 'create'
       ? this.oscService.createConfig(
-          this.currentConfig.key,
-          value,
-          this.currentConfig.environment,
-          this.currentConfig.category
-        )
+        this.currentConfig.key,
+        value,
+        this.currentConfig.environment,
+        this.currentConfig.category
+      )
       : this.oscService.updateConfig(
-          this.currentConfig.key!,
-          this.originalEnvironment,
-          value,
-          this.currentConfig.category
-        );
+        this.currentConfig.key!,
+        this.originalEnvironment,
+        value,
+        this.currentConfig.category
+      );
 
     operation.subscribe({
       next: () => {
-        this.messageService.add({ 
-          severity: 'success', 
-          summary: 'Successo', 
-          detail: `Configurazione ${this.dialogMode === 'create' ? 'creata' : 'aggiornata'} con successo` 
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Successo',
+          detail: `Configurazione ${this.dialogMode === 'create' ? 'creata' : 'aggiornata'} con successo`
         });
         this.displayDialog = false;
         this.loadConfigs();
         this.loadFilters();
       },
       error: (error) => {
-        this.messageService.add({ 
-          severity: 'error', 
-          summary: 'Errore', 
-          detail: error.detail || 'Operazione fallita' 
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Errore',
+          detail: error.detail || 'Operazione fallita'
         });
       }
     });
@@ -1008,9 +1519,9 @@ export class ConfigListComponent implements OnInit {
   formatDate(dateString: string | null): string {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleDateString('it-IT', { 
-      day: '2-digit', 
-      month: '2-digit', 
+    return date.toLocaleDateString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -1020,10 +1531,10 @@ export class ConfigListComponent implements OnInit {
   formatDateLong(dateString: string | null): string {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleString('it-IT', { 
+    return date.toLocaleString('it-IT', {
       weekday: 'long',
-      day: 'numeric', 
-      month: 'long', 
+      day: 'numeric',
+      month: 'long',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
