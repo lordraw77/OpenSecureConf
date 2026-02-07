@@ -1,12 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ViewChild  } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TableModule } from 'primeng/table';
+import { TableModule,Table  } from 'primeng/table';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { DialogModule } from 'primeng/dialog';
 import { DropdownModule } from 'primeng/dropdown';
-import { MultiSelectModule } from 'primeng/multiselect';  // ✅ AGGIUNTO
+import { MultiSelectModule } from 'primeng/multiselect';  
 import { InputTextareaModule } from 'primeng/inputtextarea';
 import { TagModule } from 'primeng/tag';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
@@ -88,7 +88,6 @@ interface ExtendedConfigEntry extends ConfigEntry {
               </span>
               
               <div class="filter-section">
-                <!-- ✅ MODIFICATO: MultiSelect per Categorie -->
                 <p-multiSelect 
                   [options]="categoryOptions" 
                   [(ngModel)]="selectedCategories"
@@ -130,6 +129,17 @@ interface ExtendedConfigEntry extends ConfigEntry {
                     <span *ngIf="!value || value.length === 0">Filtra per Ambiente</span>
                   </ng-template>
                 </p-multiSelect>
+
+                <p-button 
+                  icon="pi pi-download" 
+                  label="Esporta CSV"
+                  (onClick)="exportFilteredDataToCSV()"
+                  severity="success"
+                  [outlined]="true"
+                  styleClass="ml-2"
+                  pTooltip="Esporta i dati filtrati in CSV">
+                </p-button>
+
 
               </div>
             </div>
@@ -1179,6 +1189,7 @@ interface ExtendedConfigEntry extends ConfigEntry {
   `]
 })
 export class ConfigListComponent implements OnInit {
+  @ViewChild('dt') table!: Table;
   Math = Math;
   configs: ExtendedConfigEntry[] = [];
   categories: string[] = [];
@@ -1190,6 +1201,7 @@ export class ConfigListComponent implements OnInit {
     { label: 'Staging', value: 'staging' },
     { label: 'Production', value: 'production' }
   ];
+  filteredConfigs: any[] = [];
 
   loading = false;
   selectedCategories: string[] = [];  // ✅ MODIFICATO: Array invece di string
@@ -1220,6 +1232,9 @@ export class ConfigListComponent implements OnInit {
     if (!category) return [];
     const parts = category.split(/[\\\/]/).map(part => part.trim()).filter(part => part.length > 0);
     return parts.length > 0 ? parts : [category];
+  }
+  onTableFilter(event: any): void {
+    this.filteredConfigs = event.filteredValue || this.configs;
   }
   /**
    * Genera colori contrastanti per ogni livello della gerarchia usando palette diverse
@@ -1310,51 +1325,7 @@ export class ConfigListComponent implements OnInit {
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return luminance > 0.5 ? '#000000' : '#ffffff';
   }
-
-  // ✅ MODIFICATO: Gestione multi-categoria
-  // loadConfigs() {
-  //   this.loading = true;
-  //   const filters: any = {};
-
-  //   // Se ci sono più categorie selezionate, filtra lato client dopo il caricamento
-  //   // oppure chiama l'API multiple volte e unisci i risultati
-  //   if (this.selectedCategories && this.selectedCategories.length > 0) {
-  //     // Strategia 1: Filtrare lato client (più semplice)
-  //     this.oscService.listConfigs({}).subscribe({
-  //       next: (configs) => {
-  //         this.configs = (configs as ExtendedConfigEntry[]).filter(config => 
-  //           this.selectedCategories.includes(config.category)
-  //         );
-
-  //         if (this.selectedEnvironment) {
-  //           this.configs = this.configs.filter(config => config.environment === this.selectedEnvironment);
-  //         }
-
-  //         this.loading = false;
-  //       },
-  //       error: (error) => {
-  //         console.error('Error loading configs:', error);
-  //         this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Impossibile caricare le configurazioni' });
-  //         this.loading = false;
-  //       }
-  //     });
-  //   } else {
-  //     // Nessuna categoria selezionata, usa il filtro environment se presente
-  //     if (this.selectedEnvironment) filters.environment = this.selectedEnvironment;
-
-  //     this.oscService.listConfigs(filters).subscribe({
-  //       next: (configs) => {
-  //         this.configs = configs as ExtendedConfigEntry[];
-  //         this.loading = false;
-  //       },
-  //       error: (error) => {
-  //         console.error('Error loading configs:', error);
-  //         this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Impossibile caricare le configurazioni' });
-  //         this.loading = false;
-  //       }
-  //     });
-  //   }
-  // }
+ 
   onFilterChange() {
     // Piccolo delay per assicurarsi che il modello sia aggiornato
     setTimeout(() => {
@@ -1515,6 +1486,115 @@ export class ConfigListComponent implements OnInit {
   formatValuePretty(value: any): string {
     return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
   }
+  // Export personalizzato con tutti i dati filtrati
+  exportFilteredDataToCSV(): void {
+    // Usa i dati filtrati se disponibili, altrimenti tutti i dati
+    const dataToExport = this.filteredConfigs.length > 0 
+      ? this.filteredConfigs 
+      : this.configs;
+
+    if (!dataToExport || dataToExport.length === 0) {
+      console.warn('Nessun dato da esportare');
+      return;
+    }
+
+    // Definisci le colonne da esportare (escludi 'actions')
+    const columns = [
+      { field: 'key', header: 'Chiave' },
+      { field: 'value', header: 'Valore' },
+      { field: 'category', header: 'Categoria' },
+      { field: 'environment', header: 'Ambiente' },
+      { field: 'created_at', header: 'Data Creazione' },
+      { field: 'updated_at', header: 'Data Modifica' }
+    ];
+
+    // Crea l'intestazione CSV
+    const header = columns.map(col => col.header).join(',');
+
+    // Crea le righe CSV
+    const rows = dataToExport.map(config => {
+      return columns.map(col => {
+        let value = config[col.field];
+        
+        // Formatta le date
+        if ((col.field === 'created_at' || col.field === 'updated_at') && value) {
+          value = this.formatDate(value);
+        }
+        // Gestisci il campo 'value' che può essere di tipo complesso
+        else if (col.field === 'value') {
+          value = this.formatValueForCSV(value);
+        }
+        
+        // Gestisci valori null/undefined
+        if (value === null || value === undefined) {
+          value = '';
+        }
+        
+        // Converti tutto in stringa
+        value = String(value);
+        
+        // Escape per CSV: aggiungi virgolette se contiene virgole, newline o virgolette
+        if (value.includes(',') || value.includes('\n') || value.includes('"') || value.includes('\r')) {
+          // Escape delle virgolette doppie: " diventa ""
+          value = `"${value.replace(/"/g, '""')}"`;
+        }
+        
+        return value;
+      }).join(',');
+    });
+
+    // Combina intestazione e righe
+    const csvContent = [header, ...rows].join('\r\n');
+
+    // Aggiungi BOM UTF-8 per compatibilità Excel
+    const blob = new Blob(['\ufeff' + csvContent], { 
+      type: 'text/csv;charset=utf-8;' 
+    });
+
+    // Crea link per il download
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Nome file con timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    link.download = `configuration-${timestamp}.csv`;
+    
+    // Trigger download
+    link.click();
+    
+    // Cleanup
+    window.URL.revokeObjectURL(url);
+    link.remove();
+  }
+
+  /**
+   * Formatta il valore per l'export CSV gestendo tutti i tipi di dato
+   * @param value - Può essere dict, string, int, bool, o list
+   * @returns Stringa formattata per CSV
+   */
+  private formatValueForCSV(value: any): string {
+    // Gestisci null/undefined
+    if (value === null || value === undefined) {
+      return '';
+    }
+    
+    // Se è un oggetto (dict) o un array (list), serializza in JSON
+    if (typeof value === 'object') {
+      try {
+        // JSON.stringify formatta oggetti e array
+        return JSON.stringify(value);
+      } catch (error) {
+        console.error('Errore nella serializzazione JSON:', error);
+        return String(value);
+      }
+    }
+    
+    // Per tipi primitivi (string, number, boolean), converti in stringa
+    return String(value);
+  }
+
+
 
   formatDate(dateString: string | null): string {
     if (!dateString) return '-';
@@ -1541,4 +1621,4 @@ export class ConfigListComponent implements OnInit {
       second: '2-digit'
     });
   }
-}
+ }
