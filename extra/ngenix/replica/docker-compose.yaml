@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Node 1 - FEDERATED mode
+  # Node 1 - REPLICA mode
   node1:
     image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node1
@@ -30,7 +30,7 @@ services:
       - cluster_network
     restart: unless-stopped
 
-  # Node 2 - FEDERATED mode
+  # Node 2 - REPLICA mode
   node2:
     image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node2
@@ -59,7 +59,7 @@ services:
       - cluster_network
     restart: unless-stopped
 
-  # Node 3 - FEDERATED mode
+  # Node 3 - REPLICA mode
   node3:
     image: lordraw/open-secureconfiguration:latest
     container_name: opensecureconf-node3

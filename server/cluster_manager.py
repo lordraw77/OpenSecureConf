@@ -13,23 +13,17 @@
 OpenSecureConf - Cluster Manager Module with Metrics Support
 
 This module provides cluster management for distributed, encrypted configuration
-storage. It supports two clustering modes:
+storage. It supports REPLICA clustering mode:
 
-1. REPLICA:
-   - All nodes store and synchronize all configuration keys (active-active replication).
-   - Write operations are broadcast to all healthy nodes.
-   - Background synchronization ensures eventual consistency.
-
-2. FEDERATED:
-   - Each node stores only the configuration keys it receives locally.
-   - Read/list operations can query other nodes when data is not found locally.
-   - Results from multiple nodes are merged to present a unified view.
+REPLICA Mode:
+- All nodes store and synchronize all configuration keys (active-active replication).
+- Write operations are broadcast to all healthy nodes.
+- Background synchronization ensures eventual consistency.
 
 Features:
 - Node discovery and in-memory registry of cluster members.
 - Periodic health checking of nodes with configurable intervals.
 - Automatic, best-effort synchronization in REPLICA mode.
-- Distributed read and list operations in FEDERATED mode.
 - Optional API key authentication for inter-node communication.
 - Asynchronous implementation using asyncio and httpx.
 - Metrics tracking for synchronization and cluster operations.
@@ -55,12 +49,9 @@ class ClusterMode(str, Enum):
 
     Attributes:
         REPLICA: All nodes synchronize and store all configuration keys
-                (active-active replication).
-        FEDERATED: Each node stores only its own keys, and queries can be
-                  distributed across the cluster to locate missing keys.
+                 (active-active replication).
     """
     REPLICA = "replica"  # All nodes sync all keys
-    FEDERATED = "federated"  # Distributed storage with cross-node queries
 
 
 @dataclass
@@ -101,20 +92,16 @@ class ClusterManager:
     Manages cluster operations for distributed configuration management.
 
     This component coordinates multiple OpenSecureConf nodes that expose the
-    same REST API, providing two cluster modes:
+    same REST API, providing REPLICA cluster mode:
 
     - REPLICA:
       All nodes maintain a full copy of all configuration entries. Write
       operations (create, update, delete) are broadcast to every healthy node,
       and a background synchronization loop periodically pulls data from peers.
 
-    - FEDERATED:
-      Each node stores only the configuration entries it receives locally.
-      When a configuration is not found on the current node, read and list
-      operations can query the other nodes and merge their responses.
-
     The manager uses asynchronous HTTP requests, periodic health checks,
     and optional API-key–based authentication for inter-node calls.
+
     Includes metrics tracking for Prometheus monitoring.
     """
 
@@ -135,8 +122,7 @@ class ClusterManager:
             node_id:
                 Unique identifier for this node (for example "host:port").
             cluster_mode:
-                Cluster operating mode (ClusterMode.REPLICA or
-                ClusterMode.FEDERATED).
+                Cluster operating mode (ClusterMode.REPLICA).
             cluster_nodes:
                 List of other cluster node addresses, in the form "host:port".
                 The current node_id is automatically excluded from this list.
@@ -144,8 +130,7 @@ class ClusterManager:
                 Optional API key used in the "X-API-Key" header for secure
                 communication between nodes. If None, no API key header is sent.
             sync_interval:
-                Interval in seconds between synchronization runs in REPLICA
-                mode. Ignored in FEDERATED mode.
+                Interval in seconds between synchronization runs in REPLICA mode.
             health_check_interval:
                 Interval in seconds between health checks for all known nodes.
             metrics_registry:
@@ -197,8 +182,8 @@ class ClusterManager:
 
         This method:
         - Starts a periodic health check loop for all known nodes.
-        - If the cluster mode is REPLICA, also starts a periodic synchronization
-          loop that pulls configurations from healthy peers.
+        - Starts a periodic synchronization loop that pulls configurations 
+          from healthy peers.
 
         It should typically be called once during application startup.
         """
@@ -207,7 +192,7 @@ class ClusterManager:
         self._background_tasks.add(task1)
         task1.add_done_callback(self._background_tasks.discard)
 
-        # Sync task (only for REPLICA mode)
+        # Sync task (REPLICA mode)
         if self.cluster_mode == ClusterMode.REPLICA:
             task2 = asyncio.create_task(self._sync_loop())
             self._background_tasks.add(task2)
@@ -217,7 +202,8 @@ class ClusterManager:
         """Stop all background cluster tasks.
 
         Cancels and awaits all running background asyncio tasks created by
-        the cluster manager (health checks and, in REPLICA mode, sync loop).
+        the cluster manager (health checks and sync loop).
+
         This should be called during application shutdown to ensure a clean
         termination of background tasks.
         """
@@ -241,11 +227,10 @@ class ClusterManager:
                 logger.info("health_check_error", error=str(e))
 
     async def _sync_loop(self):
-        """Run the periodic synchronization loop (REPLICA mode only).
+        """Run the periodic synchronization loop (REPLICA mode).
 
-        Repeatedly sleeps for ``sync_interval`` seconds and, if the cluster
-        mode is REPLICA, calls :meth:`_sync_configurations`. The loop stops
-        when the task is cancelled.
+        Repeatedly sleeps for ``sync_interval`` seconds and calls 
+        :meth:`_sync_configurations`. The loop stops when the task is cancelled.
         """
         while True:
             try:
@@ -339,7 +324,6 @@ class ClusterManager:
             logger.info("sync_completed",
                        duration_seconds=round(duration, 3),
                        nodes_synced=len(healthy_nodes))
-
         finally:
             self.sync_in_progress = False
 
@@ -362,8 +346,7 @@ class ClusterManager:
             is expected to provide concrete merging logic (upserts, conflict
             resolution, etc.).
         """
-        # This is called by the sync process - implementation in api.py
-
+        # This is called by the sync process - implementation in route handlers
 
     async def broadcast_create(self, key: str, value: dict, category: str, environment: str, user_key: str):
         """
@@ -376,21 +359,22 @@ class ClusterManager:
                 Configuration value (JSON-serializable dict).
             category:
                 Optional category associated with the configuration.
+            environment:
+                Environment identifier for the configuration.
             user_key:
                 User encryption key to send in the ``X-User-Key`` header.
 
         Behavior:
-            - If the cluster mode is not REPLICA, the method returns immediately.
-            - For each healthy node, performs a POST request to ``/configs``
-              with the provided payload and headers.
-            - Errors for individual nodes are logged and do not raise
-              exceptions (best-effort propagation).
+        - If the cluster mode is not REPLICA, the method returns immediately.
+        - For each healthy node, performs a POST request to ``/configs``
+          with the provided payload and headers.
+        - Errors for individual nodes are logged and do not raise
+          exceptions (best-effort propagation).
         """
         if self.cluster_mode != ClusterMode.REPLICA:
             return
 
         healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-
         async with httpx.AsyncClient(timeout=10.0) as client:
             for node in healthy_nodes:
                 try:
@@ -401,7 +385,7 @@ class ClusterManager:
                     await client.post(
                         f"{node.base_url}/configs",
                         headers=headers,
-                        json={"key": key, "value": value, "category": category,"environment": environment}
+                        json={"key": key, "value": value, "category": category, "environment": environment}
                     )
                 except Exception as e:
                     logger.info("broadcast_create_failed", node_id=node.node_id, error=str(e))
@@ -418,20 +402,21 @@ class ClusterManager:
             category:
                 Optional new category. If None on the receiving node, the
                 existing category may be preserved depending on API logic.
+            environment:
+                Environment identifier for the configuration.
             user_key:
                 User encryption key to send in the ``X-User-Key`` header.
 
         Behavior:
-            - If the cluster mode is not REPLICA, the method returns immediately.
-            - For each healthy node, performs a PUT request to
-              ``/configs/{key}`` with the updated payload.
-            - Errors for individual nodes are logged and ignored.
+        - If the cluster mode is not REPLICA, the method returns immediately.
+        - For each healthy node, performs a PUT request to
+          ``/configs/{key}`` with the updated payload.
+        - Errors for individual nodes are logged and ignored.
         """
         if self.cluster_mode != ClusterMode.REPLICA:
             return
 
         healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-
         async with httpx.AsyncClient(timeout=10.0) as client:
             for node in healthy_nodes:
                 try:
@@ -442,7 +427,7 @@ class ClusterManager:
                     await client.put(
                         f"{node.base_url}/configs/{key}",
                         headers=headers,
-                        json={"value": value, "category": category,"environment": environment}
+                        json={"value": value, "category": category, "environment": environment}
                     )
                 except Exception as e:
                     logger.info("broadcast_update_failed", node_id=node.node_id, error=str(e))
@@ -458,16 +443,15 @@ class ClusterManager:
                 User encryption key to send in the ``X-User-Key`` header.
 
         Behavior:
-            - If the cluster mode is not REPLICA, the method returns immediately.
-            - For each healthy node, performs a DELETE request to
-              ``/configs/{key}``.
-            - Errors for individual nodes are logged and ignored.
+        - If the cluster mode is not REPLICA, the method returns immediately.
+        - For each healthy node, performs a DELETE request to
+          ``/configs/{key}``.
+        - Errors for individual nodes are logged and ignored.
         """
         if self.cluster_mode != ClusterMode.REPLICA:
             return
 
         healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-
         async with httpx.AsyncClient(timeout=10.0) as client:
             for node in healthy_nodes:
                 try:
@@ -481,112 +465,6 @@ class ClusterManager:
                     )
                 except Exception as e:
                     logger.info("broadcast_delete_failed", node_id=node.node_id, error=str(e))
-
-    async def federated_read(self, key: str, user_key: str) -> Optional[Dict]:
-        """
-        Query all healthy nodes for a configuration key (FEDERATED mode).
-
-        Args:
-            key:
-                Configuration key to look up.
-            user_key:
-                User encryption key to send in the ``X-User-Key`` header.
-
-        Returns:
-            The configuration object (as a dict) if any node returns HTTP 200,
-            or None if the key is not found on any healthy node or all
-            requests fail.
-
-        Behavior:
-            - If the cluster mode is not FEDERATED, immediately returns None.
-            - Iterates over healthy nodes and performs a GET request to
-              ``/configs/{key}`` on each.
-            - Returns the first successful response (fail-fast).
-            - Logs communication errors and continues with the next node.
-        """
-        if self.cluster_mode != ClusterMode.FEDERATED:
-            return None
-
-        healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-        failed_nodes = []
-
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for node in healthy_nodes:
-                try:
-                    headers = {"X-User-Key": user_key}
-                    if self.api_key:
-                        headers["X-API-Key"] = self.api_key
-
-                    response = await client.get(
-                        f"{node.base_url}/configs/{key}",
-                        headers=headers
-                    )
-
-                    if response.status_code == 200:
-                        return response.json()
-                except Exception as exc:
-                    failed_nodes.append((node.base_url, str(exc)))
-
-        # Log solo se tutti i nodi falliscono
-        if failed_nodes:
-            logger.info("federated_read_all_failed", key=key, failed_nodes=len(failed_nodes))
-
-        return None
-
-    async def federated_list(self, category: Optional[str], user_key: str) -> List[Dict]:
-        """
-        Aggregate a list of configurations from all healthy nodes (FEDERATED mode).
-
-        Args:
-            category:
-                Optional category filter to apply on remote nodes, or None to
-                list all configurations.
-            user_key:
-                User encryption key to send in the ``X-User-Key`` header.
-
-        Returns:
-            A combined list of configuration objects, with duplicate keys
-            removed. If the cluster mode is not FEDERATED, returns an empty list.
-
-        Behavior:
-            - If the cluster mode is not FEDERATED, returns [].
-            - For each healthy node, calls ``GET /configs`` (optionally with
-              a ``?category=...`` query parameter).
-            - Merges results, skipping duplicate keys that were already seen
-              from previous nodes.
-            - Logs communication errors and continues with remaining nodes.
-        """
-        if self.cluster_mode != ClusterMode.FEDERATED:
-            return []
-
-        all_configs = []
-        seen_keys = set()
-        healthy_nodes = [n for n in self.nodes.values() if n.is_healthy]
-
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            for node in healthy_nodes:
-                try:
-                    headers = {"X-User-Key": user_key}
-                    if self.api_key:
-                        headers["X-API-Key"] = self.api_key
-
-                    url = f"{node.base_url}/configs"
-                    if category:
-                        url += f"?category={category}"
-
-                    response = await client.get(url, headers=headers)
-
-                    if response.status_code == 200:
-                        configs = response.json()
-                        for config in configs:
-                            # Avoid duplicates (same key from multiple nodes)
-                            if config["key"] not in seen_keys:
-                                all_configs.append(config)
-                                seen_keys.add(config["key"])
-                except Exception as e:
-                    logger.info("federated_list_node_failed", node_id=node.node_id, error=str(e))
-
-        return all_configs
 
     async def sync_encryption_salt(self, local_salt_path: str) -> bool:
         """
@@ -609,6 +487,7 @@ class ClusterManager:
         if has_local_salt:
             # We have salt - distribute to nodes that need it
             logger.info("salt_distribution_started", node_id=self.node_id)
+
             with open(local_salt_path, 'rb') as f:
                 salt_data = f.read()
 
@@ -653,10 +532,12 @@ class ClusterManager:
                         if response.status_code == 200:
                             # Save received salt
                             salt_data = response.content
+
                             # Create directory if needed
                             os.makedirs(os.path.dirname(local_salt_path), exist_ok=True)
                             with open(local_salt_path, 'wb') as f:
                                 f.write(salt_data)
+
                             logger.info("salt_received_success", source_node=node.node_id)
                             return True
                     except Exception:  # nosec B112
@@ -673,13 +554,17 @@ class ClusterManager:
 
             if self.node_id == bootstrap_node:
                 logger.info("salt_generation_started", bootstrap_node=self.node_id)
+
                 # Generate salt
                 salt_data = secrets.token_bytes(64)
+
                 # Create directory if needed
                 os.makedirs(os.path.dirname(local_salt_path), exist_ok=True)
+
                 # Save locally
                 with open(local_salt_path, 'wb') as f:
                     f.write(salt_data)
+
                 logger.info("salt_generated", size_bytes=len(salt_data))
 
                 # Wait a moment for other nodes to be ready
@@ -710,9 +595,11 @@ class ClusterManager:
                 return True
             else:
                 logger.info("salt_waiting_bootstrap", bootstrap_node=bootstrap_node, current_node=self.node_id)
+
                 # Wait and retry getting salt from bootstrap node
                 for attempt in range(5):  # 5 attempts
                     await asyncio.sleep(2)  # Wait 2 seconds between attempts
+
                     try:
                         headers = {}
                         if self.api_key:
@@ -754,11 +641,11 @@ class ClusterManager:
         Returns:
             A dictionary with the following fields:
             - ``node_id`` (str): ID of the local node.
-            - ``cluster_mode`` (str): Current mode, either "replica" or "federated".
+            - ``cluster_mode`` (str): Current mode (replica).
             - ``total_nodes`` (int): Total number of known peer nodes.
             - ``healthy_nodes`` (int): Number of nodes currently marked as healthy.
             - ``last_sync`` (str | None): ISO 8601 timestamp of the last
-              successful synchronization run (REPLICA mode), or None if no sync
+              successful synchronization run, or None if no sync
               has been performed yet.
             - ``nodes`` (list[dict]): List of serialized node metadata, one
               entry per known node (see :meth:`NodeInfo.to_dict`).
@@ -766,8 +653,8 @@ class ClusterManager:
         return {
             "node_id": self.node_id,
             "cluster_mode": self.cluster_mode.value,
-            "total_nodes": len(self.nodes) + 1,  # +1 per il nodo corrente
-            "healthy_nodes": sum(1 for n in self.nodes.values() if n.is_healthy) + 1,  # +1 per il nodo corrente (sempre healthy)
+            "total_nodes": len(self.nodes) + 1,  # +1 for current node
+            "healthy_nodes": sum(1 for n in self.nodes.values() if n.is_healthy) + 1,  # +1 for current node (always healthy)
             "last_sync": self.last_sync_time.isoformat() if self.last_sync_time else None,
             "nodes": [node.to_dict() for node in self.nodes.values()]
         }

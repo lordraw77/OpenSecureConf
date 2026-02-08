@@ -14,6 +14,7 @@
 # pylint: disable=pointless-string-statement
 # pylint: disable=invalid-name
 # pylint: disable=ungrouped-imports
+
 """
 Configuration Management Routes
 
@@ -22,7 +23,7 @@ Each endpoint handles encryption/decryption, validation, error handling, and met
 
 Endpoints:
 - POST /configs: Create new configuration
-- GET /configs/{key}: Read specific configuration
+- GET /configs/{key}: Read specific configuration  
 - PUT /configs/{key}: Update existing configuration
 - DELETE /configs/{key}: Delete configuration
 - GET /configs: List all configurations with filters
@@ -31,7 +32,6 @@ Endpoints:
 import asyncio
 from typing import Optional, Literal
 from fastapi import APIRouter, HTTPException, Header, Query, Depends
-
 from config_manager import ConfigurationManager
 from core.models import ConfigCreate, ConfigUpdate, ConfigResponse, ConfigResponseFull
 from core.dependencies import get_config_manager
@@ -48,18 +48,16 @@ from cluster_manager import ClusterMode
 import traceback
 import logging
 
-# Configura il logger
+# Configure the logger
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-
 # Import cluster manager (will be None if clustering disabled)
 # This import happens at module load, cluster_manager set in main.py
 cluster_manager = None  # Will be set by main.py
-
 
 # Create router for configuration endpoints
 router = APIRouter(prefix="/configs", tags=["Configurations"])
@@ -98,6 +96,7 @@ async def create_configuration(
             category=config.category,
             environment=config.environment
         )
+
         logger.debug(
             f"POST /configs - SUCCESS - Key created: '{config.key}' | "
             f"Category: {config.category} | Environment: {config.environment}"
@@ -116,7 +115,7 @@ async def create_configuration(
             if cluster_manager.cluster_mode == ClusterMode.REPLICA:
                 asyncio.create_task(
                     cluster_manager.broadcast_create(
-                        config.key, config.value, config.category,config.environment, x_user_key
+                        config.key, config.value, config.category, config.environment, x_user_key
                     )
                 )
 
@@ -127,7 +126,7 @@ async def create_configuration(
             f"POST /configs - VALIDATION ERROR - Key: '{config.key}' | "
             f"Error: {str(e)}"
         )
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="validation_error").inc()
@@ -136,10 +135,10 @@ async def create_configuration(
     except Exception as e:
         logger.debug(
             f"POST /configs - INTERNAL ERROR - Key: '{config.key}' | "
-            f"Error: {str(e)}", 
-            exc_info=True  # Include il traceback completo
+            f"Error: {str(e)}",
+            exc_info=True  # Include full traceback
         )
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='create', status='error').inc()
         config_write_operations.labels(operation='create', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="internal_error").inc()
@@ -157,10 +156,11 @@ async def read_configuration(
     """
     Read and decrypt a configuration entry by key.
 
-    Tries local database first. In FEDERATED mode, queries other nodes if not found locally.
+    Reads configuration from local database.
 
     Args:
         key: Configuration key
+        environment: Environment identifier (REQUIRED)
         mode: Response format (short=no timestamps, full=with timestamps)
         x_user_key: User encryption key
         manager: ConfigurationManager instance
@@ -175,52 +175,30 @@ async def read_configuration(
     try:
         include_timestamps = mode == "full"
 
-        # Try local read first
-        try:
-            result = await asyncio.to_thread(
-                manager.read,
-                key=key,
-                environment=environment,
-                include_timestamps=include_timestamps
-            )
+        # Read from local database
+        result = await asyncio.to_thread(
+            manager.read,
+            key=key,
+            environment=environment,
+            include_timestamps=include_timestamps
+        )
 
+        # Metrics
+        config_operations_total.labels(operation='read', status='success').inc()
+        config_read_operations.labels(status='success').inc()
+        encryption_operations_total.labels(operation='decrypt').inc()
 
-            # Metrics
-            config_operations_total.labels(operation='read', status='success').inc()
-            config_read_operations.labels(status='success').inc()
-            encryption_operations_total.labels(operation='decrypt').inc()
-
-            return result
-
-        except ValueError as ve:
-            # Not found locally - try federated query
-            if OSC_CLUSTER_ENABLED and cluster_manager:
-                if cluster_manager.cluster_mode == ClusterMode.FEDERATED:
-                    result = await cluster_manager.federated_read(key, x_user_key)
-                    if result:
-                        config_operations_total.labels(operation='read', status='success').inc()
-                        config_read_operations.labels(status='success').inc()
-                        encryption_operations_total.labels(operation='decrypt').inc()
-
-                        # Remove timestamps if short mode
-                        if mode == "short":
-                            result.pop("created_at", None)
-                            result.pop("updated_at", None)
-
-                        return result
-
-            # Not found anywhere
-            raise ValueError(f"Configuration with key '{key}' not found") from ve
+        return result
 
     except ValueError as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='read', status='not_found').inc()
         config_read_operations.labels(status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='read', status='error').inc()
         config_read_operations.labels(status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -244,6 +222,7 @@ async def update_configuration(
     Args:
         key: Configuration key to update
         config: New configuration data
+        environment: Environment identifier (REQUIRED)
         x_user_key: User encryption key
         manager: ConfigurationManager instance
 
@@ -256,12 +235,12 @@ async def update_configuration(
     """
     try:
         result = await asyncio.to_thread(
-                    manager.update,
-                    key=key,
-                    environment=environment,
-                    value=config.value,
-                    category=config.category
-                )
+            manager.update,
+            key=key,
+            environment=environment,
+            value=config.value,
+            category=config.category
+        )
 
         # Metrics
         config_operations_total.labels(operation='update', status='success').inc()
@@ -280,14 +259,14 @@ async def update_configuration(
         return result
 
     except ValueError as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='update', status='not_found').inc()
         config_write_operations.labels(operation='update', status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='update', status='error').inc()
         config_write_operations.labels(operation='update', status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -309,6 +288,7 @@ async def delete_configuration(
 
     Args:
         key: Configuration key to delete
+        environment: Environment identifier (REQUIRED)
         x_user_key: User encryption key
         manager: ConfigurationManager instance
 
@@ -343,14 +323,14 @@ async def delete_configuration(
         return {"message": f"Configuration '{key}' deleted successfully"}
 
     except ValueError as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='delete', status='not_found').inc()
         config_write_operations.labels(operation='delete', status='not_found').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="not_found").inc()
         raise HTTPException(status_code=404, detail=str(e)) from e
 
     except Exception as e:
-        traceback.print_exc() 
+        traceback.print_exc()
         config_operations_total.labels(operation='delete', status='error').inc()
         config_write_operations.labels(operation='delete', status='error').inc()
         api_errors_total.labels(endpoint="/configs/{key}", error_type="internal_error").inc()
@@ -368,7 +348,7 @@ async def list_configurations(
     """
     List all configurations with optional filters.
 
-    Returns local configurations. In FEDERATED mode, also queries other nodes and merges results.
+    Returns local configurations from the database.
 
     Args:
         category: Optional category filter
@@ -397,25 +377,10 @@ async def list_configurations(
         # Metrics
         config_operations_total.labels(operation='list', status='success').inc()
 
-        # In FEDERATED mode, also get from other nodes
-        if OSC_CLUSTER_ENABLED and cluster_manager:
-            if cluster_manager.cluster_mode == ClusterMode.FEDERATED:
-                remote_configs = await cluster_manager.federated_list(category, x_user_key)
-
-                # Merge results (avoid duplicates)
-                local_keys = {c["key"] for c in result}
-                for remote_config in remote_configs:
-                    if remote_config["key"] not in local_keys:
-                        # Remove timestamps if short mode
-                        if mode == "short":
-                            remote_config.pop("created_at", None)
-                            remote_config.pop("updated_at", None)
-                        result.append(remote_config)
-
         return result
 
     except Exception as e:
-        traceback.print_exc()   
+        traceback.print_exc()
         config_operations_total.labels(operation='list', status='error').inc()
         api_errors_total.labels(endpoint="/configs", error_type="internal_error").inc()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}") from e

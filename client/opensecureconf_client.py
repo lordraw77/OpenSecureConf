@@ -311,10 +311,10 @@ class OpenSecureConfClient:
         """
         Get cluster status and node information.
 
-        Returns:
+        Returns:s
             Dictionary containing cluster status with fields:
             - enabled: Whether clustering is enabled
-            - mode: Cluster mode (replica or federated)
+            - mode: Cluster mode (replica )
             - node_id: Current node identifier
             - total_nodes: Total number of nodes in cluster
             - healthy_nodes: Number of healthy nodes

@@ -2,7 +2,7 @@
 
 **Secure Configuration Management System with Clustering, Python Client & REST API**
 
-A complete Python-based solution for encrypted configuration management featuring a FastAPI server with hybrid encryption, distributed clustering (REPLICA/FEDERATED modes), and a PyPI-published client library. Store, retrieve, and distribute encrypted settings securely with multithreading support and async operations.
+A complete Python-based solution for encrypted configuration management featuring a FastAPI server with hybrid encryption, distributed clustering (REPLICA modes), and a PyPI-published client library. Store, retrieve, and distribute encrypted settings securely with multithreading support and async operations.
 
 ## Badges
 
@@ -44,7 +44,7 @@ A complete Python-based solution for encrypted configuration management featurin
 OpenSecureConf provides a complete ecosystem for secure configuration management:
 
 - **🖥️ Server**: FastAPI-based REST API with hybrid encryption (PBKDF2 + Fernet)
-- **🌐 Clustering**: REPLICA (active-active replication) or FEDERATED (distributed storage) modes
+- **🌐 Clustering**: REPLICA (active-active replication) 
 - **🔄 Auto Salt Sync**: Automatic encryption salt distribution across cluster nodes
 - **📦 Client**: Python library published on PyPI for easy integration
 - **🔒 Security**: Military-grade encryption with 64-byte salt and 480k iterations
@@ -141,7 +141,6 @@ OpenSecureConf/
 │   ├── api.py
 │   ├── cluster_manager.py
 │   ├── config_manager.py
-│   ├── docker-compose-federated.yml
 │   ├── docker-compose-replica.yml
 │   ├── docker-compose.yaml
 │   ├── Dockerfile
@@ -184,27 +183,6 @@ curl http://localhost:9002/configs/config \
   -H "X-API-Key: cluster-secret-key-123" \
   -H "X-User-Key: test123"
 ```
-
-### FEDERATED Mode (Distributed Storage)
-
-**Perfect for geographic distribution and large datasets.**
-
-- Each node stores only its own configurations
-- No automatic replication
-- Cross-node queries when data not found locally
-- Aggregated list operations across all nodes
-- Load distribution
-
-**Use when:**
-- Large data volumes
-- Geographic distribution required
-- Data segregation by region/datacenter
-- 5+ nodes cluster
-- Frequent writes
-
-```bash
-# Start FEDERATED cluster
-docker-compose -f docker-compose-federated.yml up -d
 
 # Write to different nodes
 curl -X POST http://localhost:9001/configs \
@@ -251,7 +229,7 @@ export OSC_API_KEY=123456789-api-key
 
 # Cluster Configuration
 export OSC_CLUSTER_ENABLED=true
-export OSC_CLUSTER_MODE=replica  # or federated
+export OSC_CLUSTER_MODE=replica  
 export OSC_CLUSTER_NODE_ID=node1:9000
 export OSC_CLUSTER_NODES=node2:9000,node3:9000
 export OSC_CLUSTER_SYNC_INTERVAL=30  # seconds (REPLICA only)
@@ -262,9 +240,6 @@ export OSC_CLUSTER_SYNC_INTERVAL=30  # seconds (REPLICA only)
 ```bash
 # REPLICA cluster (3 nodes)
 docker-compose -f docker-compose-replica.yml up -d
-
-# FEDERATED cluster (3 nodes)
-docker-compose -f docker-compose-federated.yml up -d
 
 # Check logs
 docker-compose logs -f
@@ -281,7 +256,7 @@ Server will be available at:
 ### Server Features
 
 - 🔐 **Hybrid Encryption**: PBKDF2-HMAC-SHA256 (480k iterations) + Fernet cipher
-- 🌐 **Distributed Clustering**: REPLICA or FEDERATED modes with auto-discovery
+- 🌐 **Distributed Clustering**: REPLICA 
 - 🔄 **Auto Salt Sync**: Bootstrap node generates and distributes salt automatically
 - 🌐 **Async REST API**: Non-blocking endpoints with `asyncio.to_thread()`
 - ⚡ **Multithreading**: Multiple worker processes per node
@@ -331,7 +306,7 @@ client = OpenSecureConfClient(
 # CREATE (in REPLICA mode, automatically replicated to all nodes)
 config = client.create("api_key", {"token": "abc123"}, category="secrets")
 
-# READ (from any node - REPLICA: local, FEDERATED: may query other nodes)
+# READ (from any node - REPLICA)
 config = client.read("api_key")
 
 # UPDATE (in REPLICA mode, automatically updated on all nodes)
@@ -340,7 +315,7 @@ client.update("api_key", {"token": "xyz789"})
 # DELETE (in REPLICA mode, automatically deleted from all nodes)
 client.delete("api_key")
 
-# LIST (REPLICA: from local node, FEDERATED: aggregated from all nodes)
+# LIST (REPLICA: from local node)
 all_configs = client.list_all(category="secrets")
 
 # Close connection
@@ -533,10 +508,10 @@ All endpoints require `X-User-Key` header (and `X-API-Key` if enabled).
 |--------|----------|-------------|
 | GET | `/` | Service information |
 | POST | `/configs` | Create configuration (broadcasts in REPLICA) |
-| GET | `/configs/{key}` | Read configuration (cross-node query in FEDERATED) |
+| GET | `/configs/{key}` | Read configuration  |
 | PUT | `/configs/{key}` | Update configuration (broadcasts in REPLICA) |
 | DELETE | `/configs/{key}` | Delete configuration (broadcasts in REPLICA) |
-| GET | `/configs?category=X` | List configurations (aggregates in FEDERATED) |
+| GET | `/configs?category=X` | List configurations  |
 
 ### Example API Calls
 
@@ -593,7 +568,6 @@ curl -X POST "http://localhost:9001/configs" \
 
 ```bash
 # REPLICA: Read from any node (data is local)
-# FEDERATED: May query other nodes if not found locally
 curl -X GET "http://localhost:9002/configs/db" \
   -H "X-API-Key: cluster-secret-key-123" \
   -H "X-User-Key: MyKey123"
@@ -623,7 +597,6 @@ curl -X DELETE "http://localhost:9001/configs/db" \
 
 ```bash
 # REPLICA: Lists from local node (all nodes have same data)
-# FEDERATED: Aggregates from all nodes
 curl -X GET "http://localhost:9001/configs?category=prod" \
   -H "X-API-Key: cluster-secret-key-123" \
   -H "X-User-Key: MyKey123"
@@ -639,12 +612,7 @@ curl -X GET "http://localhost:9001/configs?category=prod" \
 - **Latency**: Low (all data local to each node)
 - **Consistency**: Eventual consistency with 30s sync interval
 
-**FEDERATED Mode (3 nodes with 4 workers each):**
-- **Write Operations**: 300-600+ req/s (no broadcast, 3x100-200 per node)
-- **Read Operations**: 150-450 req/s (may require cross-node queries)
-- **Latency**: Variable (depends on data location)
-- **Consistency**: Always consistent (single source per key)
-
+ 
 ### Single Node Performance
 
 - **Single Worker**: 10-20 requests/second
@@ -664,22 +632,16 @@ export OSC_WORKERS=8  # For 4-core CPU
 REPLICA Mode:
 - ✅ 2-5 nodes: Optimal
 - ⚠️ 6-10 nodes: Manageable but high broadcast overhead
-- ❌ 10+ nodes: Not recommended (use FEDERATED)
 
-FEDERATED Mode:
-- ✅ 5-50 nodes: Optimal
-- ⚠️ 50+ nodes: Consider sharding
-
+ 
 ## 🎯 Use Cases
 
 ### With Clustering
 
 - **High Availability Systems**: REPLICA mode for mission-critical configurations
-- **Geographic Distribution**: FEDERATED mode for multi-region deployments
 - **Microservices at Scale**: Centralized config with horizontal scaling
 - **Disaster Recovery**: Automatic failover with REPLICA mode
 - **Load Balancing**: Distribute read load across cluster nodes
-- **Multi-Datacenter**: FEDERATED mode for data sovereignty and compliance
 - **Development/Staging/Production**: Separate clusters per environment
 
 ### General
@@ -736,40 +698,13 @@ docker exec opensecureconf-node3 sha256sum /app/data/encryption.salt
 curl http://localhost:9001/cluster/status \
   -H "X-API-Key: cluster-secret-key-123"
 ```
-
-### Cluster Testing (FEDERATED)
-
-```bash
-# Start cluster
-docker-compose -f docker-compose-federated.yml up -d
-
-# Write to different nodes
-curl -X POST http://localhost:9001/configs \
-  -H "X-API-Key: cluster-secret-key-123" \
-  -H "X-User-Key: test123" \
-  -d '{"key":"eu-config","value":{"region":"eu"}}'
-
-curl -X POST http://localhost:9002/configs \
-  -H "X-API-Key: cluster-secret-key-123" \
-  -H "X-User-Key: test123" \
-  -d '{"key":"us-config","value":{"region":"us"}}'
-
-# Read eu-config from node2 (distributed query!)
-curl http://localhost:9002/configs/eu-config \
-  -H "X-API-Key: cluster-secret-key-123" \
-  -H "X-User-Key: test123"
-
-# List all from any node (aggregated!)
-curl http://localhost:9003/configs \
-  -H "X-API-Key: cluster-secret-key-123" \
-  -H "X-User-Key: test123"
-```
+ 
 
 ## 🐳 Production Deployment
 
 ### Docker Compose (Recommended)
 
-See `server/docker-compose-replica.yml` or `server/docker-compose-federated.yml` for complete examples.
+See `server/docker-compose-replica.yml`  for complete examples.
 
 ```yaml
 version: '3.8'
@@ -924,7 +859,7 @@ Built with:
 ✅ **Easy Integration**: Simple Python client, REST API for any language  
 ✅ **No Vendor Lock-in**: Standard technologies (SQLite, REST, Python)  
 ✅ **Cost Effective**: Free alternative to commercial secret management services  
-✅ **Scalable**: Horizontal scaling with REPLICA or FEDERATED clustering  
+✅ **Scalable**: Horizontal scaling with REPLICA  
 
 ---
 

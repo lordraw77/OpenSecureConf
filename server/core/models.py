@@ -296,7 +296,6 @@ class ClusterStatusResponse(BaseModel):
 
         mode: Cluster operating mode (if enabled)
               "replica" - Active-active replication mode
-              "federated" - Distributed storage mode
               None if clustering is disabled
 
         node_id: Unique identifier of this cluster node (if enabled)
@@ -337,7 +336,7 @@ class ClusterStatusResponse(BaseModel):
         }
     """
     enabled: bool = Field(description="Whether clustering is enabled")
-    mode: Optional[str] = Field(description="Cluster mode (replica or federated)")
+    mode: Optional[str] = Field(description="Cluster mode (replica)")
     node_id: Optional[str] = Field(description="Unique node identifier")
     total_nodes: Optional[int] = Field(description="Total number of cluster nodes")
     healthy_nodes: Optional[int] = Field(description="Number of healthy nodes")
@@ -353,16 +352,14 @@ class ClusterDistributionResponse(BaseModel):
 
     Attributes:
         cluster_mode: Current cluster operating mode
-                      "replica" or "federated"
+                      "replica" 
 
         is_replica: Boolean flag indicating replica mode
                     True for REPLICA mode (all nodes should have same data)
-                    False for FEDERATED mode (data is sharded)
 
         all_nodes_synced: Synchronization status (REPLICA mode only)
                           True if all nodes have identical key counts
                           False if any node has different key count
-                          None for FEDERATED mode (not applicable)
 
                           Note: This is a simplified check - it only compares counts,
                           not actual key names or values. For deep verification,
@@ -377,7 +374,6 @@ class ClusterDistributionResponse(BaseModel):
 
     Use Cases:
         - Verify REPLICA mode synchronization
-        - Analyze FEDERATED mode data distribution
         - Detect split-brain scenarios
         - Capacity planning and load balancing
         - Debugging cluster issues
@@ -430,32 +426,7 @@ class ClusterDistributionResponse(BaseModel):
             ]
         }
 
-    Example (FEDERATED mode):
-        {
-            "cluster_mode": "federated",
-            "is_replica": false,
-            "all_nodes_synced": null,
-            "nodes_distribution": [
-                {
-                    "node_id": "node-9000",
-                    "is_local": true,
-                    "is_healthy": true,
-                    "keys_count": 50
-                },
-                {
-                    "node_id": "node-9001",
-                    "is_local": false,
-                    "is_healthy": true,
-                    "keys_count": 55
-                },
-                {
-                    "node_id": "node-9002",
-                    "is_local": false,
-                    "is_healthy": true,
-                    "keys_count": 45
-                }
-            ]
-        }
+
     """
     cluster_mode: str = Field(description="Cluster operating mode")
     is_replica: bool = Field(description="True if replica mode")

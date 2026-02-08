@@ -2,7 +2,7 @@
 
 **Encrypted Configuration Manager with Clustering, REST API, Multithreading, Timestamps & Prometheus Metrics**
 
-A Python-based secure configuration management system with hybrid encryption, distributed clustering (REPLICA/FEDERATED modes), thread-safe operations, RESTful API distribution, comprehensive statistics, backup/import capabilities, and Prometheus metrics monitoring. Features async endpoints for maximum concurrency, automatic salt synchronization, optional API key authentication, HTTPS/SSL support, timestamp tracking, environment-based segregation, and structured async logging.
+A Python-based secure configuration management system with hybrid encryption, distributed clustering (REPLICA modes), thread-safe operations, RESTful API distribution, comprehensive statistics, backup/import capabilities, and Prometheus metrics monitoring. Features async endpoints for maximum concurrency, automatic salt synchronization, optional API key authentication, HTTPS/SSL support, timestamp tracking, environment-based segregation, and structured async logging.
 
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
@@ -12,7 +12,7 @@ A Python-based secure configuration management system with hybrid encryption, di
 
 ### Core Features
 - 🔐 **Hybrid Encryption**: PBKDF2-HMAC-SHA256 with 480k iterations + Fernet cipher (AES-128-CBC + HMAC-SHA256)
-- 🌐 **Distributed Clustering**: REPLICA (active-active replication) or FEDERATED (distributed storage) modes
+- 🌐 **Distributed Clustering**: REPLICA (active-active replication) modes
 - 🔄 **Auto Salt Sync**: Automatic encryption salt distribution across cluster nodes with bootstrap logic
 - 💾 **Thread-Safe Storage**: SQLite with connection pooling and concurrent access support
 - 🌐 **Async REST API**: Non-blocking endpoints with asyncio.to_thread() for parallel requests
@@ -102,7 +102,7 @@ OSC_API_KEY=your-super-secret-api-key-here
 
 # Cluster Configuration
 OSC_CLUSTER_ENABLED=true
-OSC_CLUSTER_MODE=replica  # or federated
+OSC_CLUSTER_MODE=replica  
 OSC_CLUSTER_NODE_ID=node1:9000
 OSC_CLUSTER_NODES=node2:9000,node3:9000
 OSC_CLUSTER_SYNC_INTERVAL=30
@@ -131,7 +131,7 @@ OSC_LOG_FILE=/app/logs/opensecureconf.log  # Optional, defaults to stdout
 | `OSC_API_KEY_REQUIRED` | Enable API key authentication (`true`/`false`) | `false` | No |
 | `OSC_API_KEY` | API key for authentication | `your-super-secret-api-key-here` | If enabled |
 | `OSC_CLUSTER_ENABLED` | Enable clustering (`true`/`false`) | `false` | No |
-| `OSC_CLUSTER_MODE` | Cluster mode: `replica` or `federated` | `replica` | If clustering |
+| `OSC_CLUSTER_MODE` | Cluster mode: `replica`   | `replica` | If clustering |
 | `OSC_CLUSTER_NODE_ID` | Unique node identifier (host:port) | `node-{PORT}` | If clustering |
 | `OSC_CLUSTER_NODES` | Comma-separated list of other nodes | `""` | If clustering |
 | `OSC_CLUSTER_SYNC_INTERVAL` | Sync interval in seconds (REPLICA only) | `30` | No |
@@ -553,27 +553,6 @@ OSC_CLUSTER_MODE=replica
 OSC_CLUSTER_SYNC_INTERVAL=30  # Sync every 30 seconds
 ```
 
-### FEDERATED Mode (Distributed Storage)
-
-**Characteristics:**
-- Each node stores only the configurations it receives directly
-- No automatic replication
-- Read operations: if key not found locally, queries all other nodes
-- List operations: aggregates results from all nodes
-- Load distribution: data distributed geographically/logically
-
-**When to use:**
-- Large data volumes
-- Geographic distribution of configurations
-- Data segregation by region/datacenter
-- Large cluster size (5+ nodes)
-- Frequent writes, moderate reads
-
-**Configuration:**
-```bash
-OSC_CLUSTER_MODE=federated
-# No sync interval needed
-```
 
 ## 📊 Prometheus Metrics
 
@@ -659,11 +638,9 @@ OpenSecureConf features a sophisticated async logging system with zero performan
 ### With Clustering, Timestamps & Observability
 
 - **High Availability Systems**: REPLICA mode for mission-critical configurations with Prometheus monitoring
-- **Geographic Distribution**: FEDERATED mode for multi-region deployments with centralized metrics
 - **Microservices at Scale**: Centralized config with horizontal scaling and structured logging
 - **Disaster Recovery**: Automatic failover with REPLICA mode, backup/import, and comprehensive audit logs
 - **Load Balancing**: Distribute read load across cluster nodes with performance metrics
-- **Multi-Datacenter**: FEDERATED mode for data sovereignty with per-node monitoring
 - **Environment Segregation**: Separate configurations by environment (dev/staging/prod) with statistics
 - **Audit & Compliance**: Timestamp tracking for all changes with structured JSON logs
 - **Configuration Versioning**: Track creation and update times for configuration lifecycle management

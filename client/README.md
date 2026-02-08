@@ -331,7 +331,7 @@ Monitor and interact with OpenSecureConf clusters:
 # Check cluster status
 status = client.get_cluster_status()
 if status['enabled']:
-    print(f"Cluster Mode: {status['mode']}")  # REPLICA or FEDERATED
+    print(f"Cluster Mode: {status['mode']}")  # REPLICA  
     print(f"Node ID: {status['node_id']}")
     print(f"Healthy Nodes: {status['healthy_nodes']}/{status['total_nodes']}")
 else:
@@ -344,7 +344,6 @@ print(f"Node Status: {health['status']}")
 
 **Cluster Modes:**
 - **REPLICA**: Active-active replication with automatic synchronization
-- **FEDERATED**: Distributed storage with cross-node queries
 
 ### Batch Operations
 
@@ -692,10 +691,8 @@ print(f"Cluster mode: {status['mode']}")
 config = client.create("shared_config", {"data": "value"}, "production")
 # This configuration is now available on all nodes
 
-# In FEDERATED mode: reads check all nodes
 config = client.read("distributed_config", "production")
-# This searches across all federated nodes
-
+ 
 # Monitor cluster health
 if status['healthy_nodes'] < status['total_nodes']:
     print(f"Warning: {status['total_nodes'] - status['healthy_nodes']} nodes are down")
