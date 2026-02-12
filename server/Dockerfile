@@ -1,38 +1,54 @@
-# OpenSecureConf Server - Production Dockerfile
-FROM python:3.12-slim
+# OpenSecureConf Server - Production Dockerfile (Optimized)
+FROM python:3.12-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1     PYTHONDONTWRITEBYTECODE=1     PIP_NO_CACHE_DIR=1     PIP_DISABLE_PIP_VERSION_CHECK=1
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install system dependencies
-RUN apt-get update &&     apt-get install -y --no-install-recommends     gcc     && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# Copy and install Python dependencies
 COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Final stage
+FROM python:3.12-slim
 
-# Copy application code
-COPY main.py ./
-COPY config_manager.py ./
-COPY cluster_manager.py ./
-COPY async_logger.py ./
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+ENV PATH=/root/.local/bin:$PATH
+
+
+# Copy application code with correct ownership
+COPY main.py config_manager.py cluster_manager.py async_logger.py ./
 COPY core ./core/
 COPY routes ./routes/
 COPY utils ./utils/
 
-# Create directory for data persistence
-RUN mkdir -p /app/data
-RUN mkdir -p /app/prometheus_multiproc
-# Expose port (configurable via environment variable)
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PROMETHEUS_MULTIPROC_DIR=/app/prometheus_multiproc
+
+# Switch to non-root user
+
+
+# Expose port
 EXPOSE 9000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3     CMD python -c "import requests; requests.get('http://localhost:9000/', timeout=5)"
+# Improved healthcheck using curl
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:9000/ || exit 1
 
-# Run the application with uvicorn
+# Run with uvicorn
 CMD ["sh", "-c", "uvicorn main:app --host ${OSC_HOST:-0.0.0.0} --port ${OSC_HOST_PORT:-9000} --workers ${OSC_WORKERS:-4}"]

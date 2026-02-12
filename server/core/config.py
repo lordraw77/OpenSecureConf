@@ -58,9 +58,9 @@ OSC_WORKERS = int(os.getenv("OSC_WORKERS", "4"))  # More workers = more memory u
 
 # === HTTPS CONFIGURATION ===
 OSC_HTTPS_ENABLED = os.getenv("OSC_HTTPS_ENABLED", "false").lower() == "true"  # Requires valid SSL certificate and key files
-OSC_SSL_CERT_FILE = os.getenv("OSC_SSL_CERT_FILE", "./cert.pem")  # Example: /etc/letsencrypt/live/yourdomain.com/fullchain.pem
-OSC_SSL_KEY_FILE = os.getenv("OSC_SSL_KEY_FILE", "./key.pem")  # Example: /etc/letsencrypt/live/yourdomain.com/privkey.pem
-OSC_SSL_KEY_FILE_PASSWORD = os.getenv("OSC_SSL_KEY_FILE_PASSWORD", None)  # Optional: Password for encrypted private key
+OSC_SSL_CERTFILE = os.getenv("OSC_SSL_CERTFILE", "./cert.pem")  # Example: /etc/letsencrypt/live/yourdomain.com/fullchain.pem
+OSC_SSL_KEYFILE = os.getenv("OSC_SSL_KEYFILE", "./key.pem")  # Example: /etc/letsencrypt/live/yourdomain.com/privkey.pem
+OSC_SSL_KEYFILE_PASSWORD = os.getenv("OSC_SSL_KEYFILE_PASSWORD", None)  # Optional: Password for encrypted private key
 OSC_SSL_CA_CERTS = os.getenv("OSC_SSL_CA_CERTS", None)  # Optional: Path to CA certificate bundle for client certificate verification
 
 # === DATABASE CONFIGURATION ===
