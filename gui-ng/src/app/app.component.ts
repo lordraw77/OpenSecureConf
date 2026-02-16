@@ -32,10 +32,19 @@ import { ThemeService } from './services/theme.service';
               <i class="pi pi-server"></i>
               <span>Cluster</span>
             </a>
+            <a routerLink="/sse-stats" routerLinkActive="active" class="nav-link">   
+              <i class="pi pi-bolt"></i>
+              <span>SSE Stats</span>
+            </a>  
+            <a routerLink="/metrics" routerLinkActive="active" class="nav-link">   
+              <i class="pi pi-chart-bar"></i>
+              <span>Metriche</span>
+            </a>
             <a routerLink="/backup" routerLinkActive="active" class="nav-link">
               <i class="pi pi-download"></i>
               <span>Backup</span>
             </a>
+
           </div>
           
           <div class="navbar-actions">

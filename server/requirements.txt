@@ -7,3 +7,4 @@ python-dotenv
 httpx
 structlog
 prometheus_client
+sse_starlette

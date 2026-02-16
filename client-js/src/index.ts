@@ -2,9 +2,9 @@
  * OpenSecureConf JavaScript/TypeScript Client
  * 
  * A comprehensive REST API client for OpenSecureConf - Encrypted configuration
- * management system with cluster support and HTTPS/SSL.
+ * management system with cluster support, HTTPS/SSL, and real-time SSE notifications.
  * 
- * @version 3.0.0
+ * @version 3.1.0
  * @license MIT
  */
 
@@ -50,6 +50,7 @@ export interface OpenSecureConfOptions {
   timeout?: number;
   rejectUnauthorized?: boolean; // For self-signed certificates (Node.js only)
 }
+
 /**
  * Backup response interface
  */
@@ -68,6 +69,61 @@ export interface ImportResponse {
   imported_count: number;
   skipped_count?: number;
   errors?: Array<{ key: string; error: string }>;
+}
+
+/**
+ * SSE event types
+ */
+export type SSEEventType = 'connected' | 'created' | 'updated' | 'deleted' | 'sync';
+
+/**
+ * SSE event data interface
+ */
+export interface SSEEventData {
+  event_type: SSEEventType;
+  key?: string;
+  environment?: string;
+  category?: string;
+  timestamp?: string;
+  node_id?: string;
+  data?: Record<string, any>;
+  subscription_id?: string;
+  filters?: {
+    key?: string;
+    environment?: string;
+    category?: string;
+  };
+}
+
+/**
+ * SSE client options
+ */
+export interface SSEOptions {
+  key?: string;
+  environment?: string;
+  category?: string;
+  onEvent?: (event: SSEEventData) => void | Promise<void>;
+  onError?: (error: Error) => void;
+  onConnected?: (subscriptionId: string) => void;
+  autoReconnect?: boolean;
+  maxReconnectAttempts?: number;
+  reconnectDelay?: number;
+  reconnectBackoff?: number;
+  maxReconnectDelay?: number;
+}
+
+/**
+ * SSE statistics interface
+ */
+export interface SSEStatistics {
+  eventsReceived: number;
+  eventsByType: Record<SSEEventType, number>;
+  keepalivesReceived: number;
+  reconnections: number;
+  connectedAt?: Date;
+  lastEventAt?: Date;
+  errors: number;
+  uptimeSeconds: number;
 }
 
 /**
@@ -90,12 +146,349 @@ export class OpenSecureConfError extends Error {
 }
 
 /**
+ * SSE error class
+ */
+export class SSEError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SSEError';
+
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, SSEError);
+    }
+  }
+}
+
+/**
  * Detect if running in Node.js environment
  */
 function isNodeEnvironment(): boolean {
   return typeof process !== 'undefined' &&
     process.versions != null &&
     process.versions.node != null;
+}
+
+/**
+ * SSE Client for real-time configuration change notifications
+ * 
+ * @example
+ * // Create SSE client with event handler
+ * const sse = client.createSSEClient({
+ *   environment: 'production',
+ *   category: 'database',
+ *   onEvent: (event) => {
+ *     console.log(`${event.event_type}: ${event.key}@${event.environment}`);
+ *   }
+ * });
+ * 
+ * // Connect and listen
+ * sse.connect();
+ * 
+ * // Later: disconnect
+ * sse.disconnect();
+ */
+export class SSEClient {
+  private baseUrl: string;
+  private apiKey?: string;
+  private options: SSEOptions;
+  private eventSource?: any; // EventSource
+  private isConnected: boolean = false;
+  private shouldReconnect: boolean = true;
+  private reconnectAttempts: number = 0;
+  private subscriptionId?: string;
+  
+  // Statistics
+  private stats: SSEStatistics = {
+    eventsReceived: 0,
+    eventsByType: {
+      connected: 0,
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      sync: 0
+    },
+    keepalivesReceived: 0,
+    reconnections: 0,
+    errors: 0,
+    uptimeSeconds: 0
+  };
+
+  constructor(baseUrl: string, apiKey: string | undefined, options: SSEOptions) {
+    this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.apiKey = apiKey;
+    this.options = {
+      autoReconnect: true,
+      maxReconnectAttempts: -1, // -1 = infinite
+      reconnectDelay: 5000,
+      reconnectBackoff: 2.0,
+      maxReconnectDelay: 60000,
+      ...options
+    };
+  }
+
+  /**
+   * Connect to SSE stream and start receiving events
+   */
+  connect(): void {
+    if (this.isConnected) {
+      console.warn('SSE client is already connected');
+      return;
+    }
+
+    this.shouldReconnect = true;
+    this.reconnectAttempts = 0;
+    this._connect();
+  }
+
+  /**
+   * Internal connection method
+   */
+  private _connect(): void {
+    try {
+      // Build URL with filters
+      const params = new URLSearchParams();
+      if (this.options.key) params.append('key', this.options.key);
+      if (this.options.environment) params.append('environment', this.options.environment);
+      if (this.options.category) params.append('category', this.options.category);
+
+      const url = `${this.baseUrl}/sse/subscribe?${params.toString()}`;
+
+      // Check for EventSource availability
+      let EventSourceClass: any;
+      
+      if (typeof EventSource !== 'undefined') {
+        // Browser environment
+        EventSourceClass = EventSource;
+      } else if (isNodeEnvironment()) {
+        // Node.js environment - require eventsource package
+        try {
+          EventSourceClass = require('eventsource');
+        } catch (error) {
+          throw new SSEError(
+            'EventSource not available. Install with: npm install eventsource'
+          );
+        }
+      } else {
+        throw new SSEError('EventSource not supported in this environment');
+      }
+
+      // Create EventSource with headers (Node.js only)
+      const eventSourceInitDict: any = {};
+      if (this.apiKey && isNodeEnvironment()) {
+        eventSourceInitDict.headers = {
+          'X-API-Key': this.apiKey
+        };
+      }
+
+      this.eventSource = new EventSourceClass(url, eventSourceInitDict);
+      
+      // Setup event listeners
+      this.eventSource.addEventListener('connected', (e: any) => this._handleConnectedEvent(e));
+      this.eventSource.addEventListener('created', (e: any) => this._handleEvent(e, 'created'));
+      this.eventSource.addEventListener('updated', (e: any) => this._handleEvent(e, 'updated'));
+      this.eventSource.addEventListener('deleted', (e: any) => this._handleEvent(e, 'deleted'));
+      this.eventSource.addEventListener('sync', (e: any) => this._handleEvent(e, 'sync'));
+
+      this.eventSource.onopen = () => {
+        this.isConnected = true;
+        this.reconnectAttempts = 0;
+        
+        if (!this.stats.connectedAt) {
+          this.stats.connectedAt = new Date();
+        }
+      };
+
+      this.eventSource.onerror = (error: any) => {
+        this.stats.errors++;
+        this.isConnected = false;
+
+        if (this.options.onError) {
+          this.options.onError(new SSEError('SSE connection error'));
+        }
+
+        // Handle reconnection
+        if (this.shouldReconnect && this.options.autoReconnect) {
+          this._scheduleReconnect();
+        }
+      };
+
+      // Handle keep-alive comments (if needed)
+      if (this.eventSource.addEventListener) {
+        this.eventSource.addEventListener('message', (e: any) => {
+          if (e.data.startsWith(':')) {
+            this.stats.keepalivesReceived++;
+          }
+        });
+      }
+
+    } catch (error) {
+      this.stats.errors++;
+      
+      if (this.options.onError) {
+        this.options.onError(error as Error);
+      }
+
+      if (this.shouldReconnect && this.options.autoReconnect) {
+        this._scheduleReconnect();
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Handle connected event
+   */
+  private _handleConnectedEvent(e: any): void {
+    try {
+      const data = JSON.parse(e.data) as SSEEventData;
+      this.subscriptionId = data.subscription_id;
+      
+      this.stats.eventsReceived++;
+      this.stats.eventsByType.connected++;
+      this.stats.lastEventAt = new Date();
+
+      if (this.options.onConnected && data.subscription_id) {
+        this.options.onConnected(data.subscription_id);
+      }
+
+      if (this.options.onEvent) {
+        this.options.onEvent(data);
+      }
+    } catch (error) {
+      console.error('Failed to parse connected event:', error);
+    }
+  }
+
+  /**
+   * Handle SSE events
+   */
+  private _handleEvent(e: any, eventType: SSEEventType): void {
+    try {
+      const data = JSON.parse(e.data) as SSEEventData;
+      data.event_type = eventType;
+
+      this.stats.eventsReceived++;
+      this.stats.eventsByType[eventType]++;
+      this.stats.lastEventAt = new Date();
+
+      if (this.options.onEvent) {
+        const result = this.options.onEvent(data);
+        
+        // Handle async callbacks
+        if (result && typeof (result as any).catch === 'function') {
+          (result as Promise<void>).catch((error) => {
+            console.error('Error in event handler:', error);
+            if (this.options.onError) {
+              this.options.onError(error);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to parse ${eventType} event:`, error);
+      this.stats.errors++;
+    }
+  }
+
+  /**
+   * Schedule reconnection with exponential backoff
+   */
+  private _scheduleReconnect(): void {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = undefined;
+    }
+
+    const maxAttempts = this.options.maxReconnectAttempts || -1;
+    if (maxAttempts >= 0 && this.reconnectAttempts >= maxAttempts) {
+      console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+      return;
+    }
+
+    this.reconnectAttempts++;
+    this.stats.reconnections++;
+
+    // Calculate delay with exponential backoff
+    const baseDelay = this.options.reconnectDelay || 5000;
+    const backoff = this.options.reconnectBackoff || 2.0;
+    const maxDelay = this.options.maxReconnectDelay || 60000;
+    
+    const delay = Math.min(
+      baseDelay * Math.pow(backoff, this.reconnectAttempts - 1),
+      maxDelay
+    );
+
+    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+
+    setTimeout(() => {
+      if (this.shouldReconnect) {
+        this._connect();
+      }
+    }, delay);
+  }
+
+  /**
+   * Disconnect from SSE stream
+   */
+  disconnect(): void {
+    this.shouldReconnect = false;
+    this.isConnected = false;
+
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = undefined;
+    }
+  }
+
+  /**
+   * Get connection status
+   */
+  getConnectionStatus(): boolean {
+    return this.isConnected;
+  }
+
+  /**
+   * Get subscription ID
+   */
+  getSubscriptionId(): string | undefined {
+    return this.subscriptionId;
+  }
+
+  /**
+   * Get SSE statistics
+   */
+  getStatistics(): SSEStatistics {
+    // Calculate uptime
+    if (this.stats.connectedAt) {
+      this.stats.uptimeSeconds = Math.floor(
+        (new Date().getTime() - this.stats.connectedAt.getTime()) / 1000
+      );
+    }
+
+    return { ...this.stats };
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStatistics(): void {
+    this.stats = {
+      eventsReceived: 0,
+      eventsByType: {
+        connected: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        sync: 0
+      },
+      keepalivesReceived: 0,
+      reconnections: 0,
+      connectedAt: this.stats.connectedAt,
+      errors: 0,
+      uptimeSeconds: 0
+    };
+  }
 }
 
 /**
@@ -119,10 +512,20 @@ function isNodeEnvironment(): boolean {
  * @example
  * // Create configurations with different value types
  * await client.create('database', { host: 'localhost', port: 5432 }, 
- *                     { category: 'config', environment: 'production' });
+ *                     'production', 'config');
  * await client.create('api_token', 'secret-token-123', 
- *                     { category: 'auth', environment: 'staging' });
- * await client.create('max_retries', 3, { environment: 'production' });
+ *                     'staging', 'auth');
+ * await client.create('max_retries', 3, 'production');
+ * 
+ * @example
+ * // Subscribe to real-time events
+ * const sse = client.createSSEClient({
+ *   environment: 'production',
+ *   onEvent: (event) => {
+ *     console.log(`${event.event_type}: ${event.key}@${event.environment}`);
+ *   }
+ * });
+ * sse.connect();
  */
 export class OpenSecureConfClient {
   private baseUrl: string;
@@ -280,7 +683,7 @@ export class OpenSecureConfClient {
   async create(
     key: string, 
     value: ConfigValue, 
-    environment: string, // Ora obbligatorio
+    environment: string,
     category?: string
   ): Promise<ConfigEntry> {
     return this.request('POST', '/configs', {
@@ -305,14 +708,13 @@ export class OpenSecureConfClient {
    * console.log(prodConfig.environment); // 'production'
    */
   async read(key: string, environment: string): Promise<ConfigEntry> {
-  if (!environment || environment.trim().length === 0) {
-    throw new Error('environment is required');
-  }
+    if (!environment || environment.trim().length === 0) {
+      throw new Error('environment is required');
+    }
 
     const params = new URLSearchParams({ environment });
     return this.request('GET', `/configs/${encodeURIComponent(key)}?${params.toString()}`);
   }
-
 
   /**
    * Update an existing configuration entry
@@ -335,9 +737,9 @@ export class OpenSecureConfClient {
     key: string, 
     environment: string,
     value: ConfigValue, 
-    category: string  
+    category?: string  
   ): Promise<ConfigEntry> {
-  if (!environment || environment.trim().length === 0) {
+    if (!environment || environment.trim().length === 0) {
       throw new Error('environment is required');
     }
 
@@ -405,14 +807,12 @@ export class OpenSecureConfClient {
       params.append('environment', options.environment);
     }
     
-    // Aggiungi mode=full per ottenere i valori completi
     params.append('mode', 'full');
 
     const queryString = params.toString();
     const endpoint = `/configs?${queryString}`;
     return this.request('GET', endpoint);
   }
-
 
   /**
    * Get cluster status
@@ -441,7 +841,6 @@ export class OpenSecureConfClient {
 
     const fetchOptions: RequestInit = { headers };
 
-    // Add HTTPS agent for Node.js
     if (this.httpsAgent) {
       (fetchOptions as any).agent = this.httpsAgent;
     }
@@ -556,7 +955,7 @@ export class OpenSecureConfClient {
     configs: Array<{ 
       key: string; 
       value: ConfigValue; 
-      environment: string; // Ora obbligatorio
+      environment: string;
       category?: string;
     }>,
     ignoreErrors: boolean = false
@@ -592,7 +991,6 @@ export class OpenSecureConfClient {
 
     return results;
   }
-
 
   /**
    * Bulk read configurations
@@ -638,7 +1036,6 @@ export class OpenSecureConfClient {
 
     return results;
   }
-
 
   /**
    * Bulk delete configurations
@@ -689,7 +1086,7 @@ export class OpenSecureConfClient {
     return { deleted, failed };
   }
 
-    /**
+  /**
    * Create an encrypted backup of all configurations
    * 
    * @param backupPassword - Password to encrypt the backup (required)
@@ -705,19 +1102,6 @@ export class OpenSecureConfClient {
    * @example
    * // Backup specific environment
    * const prodBackup = await client.createBackup('password123', {
-   *   environment: 'production'
-   * });
-   * 
-   * @example
-   * // Backup specific category
-   * const dbBackup = await client.createBackup('password123', {
-   *   category: 'database'
-   * });
-   * 
-   * @example
-   * // Backup specific category and environment
-   * const backup = await client.createBackup('password123', {
-   *   category: 'database',
    *   environment: 'production'
    * });
    */
@@ -832,16 +1216,6 @@ export class OpenSecureConfClient {
    * );
    * console.log(result.imported_count); // Number of configs imported
    * console.log(result.skipped_count);  // Number of configs skipped
-   * 
-   * @example
-   * // Import backup and overwrite existing configs
-   * const result = await client.importBackup(
-   *   backup.backup_data,
-   *   'my-secure-password-123',
-   *   true
-   * );
-   * console.log(result.message);        // Success message
-   * console.log(result.imported_count); // Total imported
    */
   async importBackup(
     backupData: string,
@@ -947,12 +1321,6 @@ export class OpenSecureConfClient {
    * @example
    * // Save full backup to file
    * await client.backupToFile('password123', './backup-2026-02-05.json');
-   * 
-   * @example
-   * // Save production backup
-   * await client.backupToFile('password123', './prod-backup.json', {
-   *   environment: 'production'
-   * });
    */
   async backupToFile(
     backupPassword: string,
@@ -1011,8 +1379,105 @@ export class OpenSecureConfClient {
       throw new Error(`Failed to import backup from file: ${error}`);
     }
   }
+
+  /**
+   * Create an SSE client for real-time configuration change notifications
+   * 
+   * @param options - SSE client options including filters and event handlers
+   * 
+   * @example
+   * // Subscribe to all production events
+   * const sse = client.createSSEClient({
+   *   environment: 'production',
+   *   onEvent: (event) => {
+   *     console.log(`${event.event_type}: ${event.key}@${event.environment}`);
+   *   },
+   *   onError: (error) => {
+   *     console.error('SSE error:', error);
+   *   }
+   * });
+   * 
+   * sse.connect();
+   * 
+   * // Later: disconnect
+   * sse.disconnect();
+   * 
+   * @example
+   * // Subscribe to specific key in staging
+   * const sse = client.createSSEClient({
+   *   key: 'database',
+   *   environment: 'staging',
+   *   category: 'config',
+   *   onEvent: async (event) => {
+   *     if (event.event_type === 'updated') {
+   *       // Reload configuration in your application
+   *       const config = await client.read(event.key!, event.environment!);
+   *       console.log('New value:', config.value);
+   *     }
+   *   }
+   * });
+   * 
+   * sse.connect();
+   * 
+   * @example
+   * // Monitor connection statistics
+   * const sse = client.createSSEClient({
+   *   environment: 'production',
+   *   onEvent: (event) => console.log(event),
+   *   onConnected: (subscriptionId) => {
+   *     console.log('Connected with subscription:', subscriptionId);
+   *   }
+   * });
+   * 
+   * sse.connect();
+   * 
+   * // Check statistics periodically
+   * setInterval(() => {
+   *   const stats = sse.getStatistics();
+   *   console.log('Events received:', stats.eventsReceived);
+   *   console.log('Uptime:', stats.uptimeSeconds, 'seconds');
+   * }, 60000);
+   */
+  createSSEClient(options: SSEOptions = {}): SSEClient {
+    return new SSEClient(this.baseUrl, this.apiKey, options);
+  }
+
+  /**
+   * Get SSE statistics from server
+   * 
+   * @example
+   * const stats = await client.getSSEStats();
+   * console.log('Active subscriptions:', stats.subscriptions.active);
+   * console.log('Total events sent:', stats.events.total_sent);
+   */
+  async getSSEStats(): Promise<any> {
+    return this.request('GET', '/sse/stats');
+  }
+
+  /**
+   * Get active SSE subscriptions from server
+   * 
+   * @example
+   * const subscriptions = await client.getSSESubscriptions();
+   * for (const sub of subscriptions) {
+   *   console.log(`${sub.subscription_id}: ${sub.filters}`);
+   * }
+   */
+  async getSSESubscriptions(): Promise<any[]> {
+    return this.request('GET', '/sse/subscriptions');
+  }
+
+  /**
+   * Check SSE service health
+   * 
+   * @example
+   * const health = await client.getSSEHealth();
+   * console.log('SSE status:', health.status);
+   * console.log('Active subscriptions:', health.active_subscriptions);
+   */
+  async getSSEHealth(): Promise<{ status: string; active_subscriptions: number; total_events_sent: number }> {
+    return this.request('GET', '/sse/health');
+  }
 }
-
-
 
 export default OpenSecureConfClient;

@@ -47,6 +47,7 @@ Usage:
 """
 
 import asyncio
+from datetime import datetime
 import traceback
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -56,6 +57,8 @@ from config_manager import ConfigurationManager
 from core.models import StatisticsResponse
 from core.dependencies import get_config_manager, validate_api_key
 from core.metrics import api_errors_total,registry
+
+from core.sse_manager import sse_manager, SSEEvent
 
 
 # =============================================================================
@@ -429,3 +432,4 @@ async def get_operations_statistics(
             status_code=500,
             detail=f"Internal error retrieving operations statistics: {str(e)}"
         ) from e
+

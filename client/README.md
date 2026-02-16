@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/opensecureconf-client.svg)](https://pypi.org/project/opensecureconf-client/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A powerful Python client library for interacting with the [OpenSecureConf API](https://github.com/lordraw77/OpenSecureConf), providing encrypted configuration management with clustering support, automatic retry logic, multi-environment support, and comprehensive monitoring capabilities.
+A powerful Python client library for interacting with the [OpenSecureConf API](https://github.com/lordraw77/OpenSecureConf), providing encrypted configuration management with clustering support, **real-time Server-Sent Events (SSE) notifications**, automatic retry logic, multi-environment support, and comprehensive monitoring capabilities.
 
 ## 📋 Table of Contents
 
@@ -14,6 +14,7 @@ A powerful Python client library for interacting with the [OpenSecureConf API](h
 - [Core Features](#core-features)
   - [Multi-Environment Support](#multi-environment-support)
   - [Basic CRUD Operations](#basic-crud-operations)
+  - [Real-Time SSE Events](#real-time-sse-events)
   - [Cluster Awareness](#cluster-awareness)
   - [Batch Operations](#batch-operations)
   - [Retry Logic](#retry-logic)
@@ -35,7 +36,14 @@ A powerful Python client library for interacting with the [OpenSecureConf API](h
 - 🌍 **Multi-Environment Support**: Same configuration key across different environments (production, staging, development)
 - 🚀 **Simple & Intuitive API**: Clean interface for CRUD operations
 - 🛡️ **Type-Safe**: Fully typed with comprehensive error handling
-- 📦 **Lightweight**: Minimal dependencies (only `requests` and `urllib3`)
+- 📦 **Lightweight**: Minimal dependencies (only `requests`, `urllib3`, and `httpx`)
+
+### Real-Time Features (New!)
+- 📡 **Server-Sent Events (SSE)**: Real-time configuration change notifications
+- 🎯 **Granular Event Filtering**: Subscribe by key, environment, category, or combinations
+- 🔄 **Auto-Reconnection**: Automatic reconnection with exponential backoff
+- 💓 **Keep-Alive Management**: Automatic connection maintenance
+- 📊 **SSE Statistics**: Comprehensive metrics on events and connections
 
 ### Enhanced Features
 - 🔄 **Automatic Retry Logic**: Exponential backoff for transient failures
@@ -50,29 +58,30 @@ A powerful Python client library for interacting with the [OpenSecureConf API](h
 ## 📦 Installation
 
 ### Standard Installation
-
 ```bash
 pip install opensecureconf-client
 ```
 
-### Development Installation
-
+### With SSE Support (Recommended)
 ```bash
-pip install opensecureconf-client[dev]
+pip install opensecureconf-client[sse]
+```
+
+### Development Installation
+```bash
+pip install opensecureconf-client[dev,sse]
 ```
 
 ### From Source
-
 ```bash
 git clone https://github.com/lordraw77/OpenSecureConf.git
 cd OpenSecureConf/client
-pip install -e .
+pip install -e ".[sse]"
 ```
 
 ## 🚀 Quick Start
 
 ### Basic Usage
-
 ```python
 from opensecureconf_client import OpenSecureConfClient
 
@@ -115,8 +124,61 @@ client.delete("database", "production")
 client.close()
 ```
 
-### Multi-Environment Configuration
+### Real-Time Configuration Updates with SSE
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient, SSEEventData
 
+# Create synchronous client for CRUD operations
+client = OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-secure-key-min-8-chars",
+    api_key="cluster-secret-key-123"
+)
+
+# Define event handler
+async def on_config_change(event: SSEEventData):
+    """Called when configuration changes occur"""
+    if event.event_type == "updated":
+        print(f"🔄 Config updated: {event.key}@{event.environment}")
+        # Reload configuration in your application
+        config = client.read(event.key, event.environment)
+        print(f"   New value: {config['value']}")
+    
+    elif event.event_type == "created":
+        print(f"✨ New config: {event.key}@{event.environment}")
+    
+    elif event.event_type == "deleted":
+        print(f"🗑️  Config deleted: {event.key}@{event.environment}")
+
+# Create SSE client with filters
+async def main():
+    sse = client.create_sse_client(
+        environment="production",      # Only production events
+        category="database",            # Only database configs
+        on_event=on_config_change,     # Event callback
+        auto_reconnect=True,           # Auto-reconnect on failure
+        log_level="INFO"
+    )
+    
+    # Connect and listen
+    async with sse:
+        await sse.connect()
+        
+        # Keep running to receive events
+        while True:
+            await asyncio.sleep(60)
+            
+            # Display statistics
+            stats = sse.get_statistics()
+            print(f"📊 Events received: {stats['events_received']}")
+            print(f"   Uptime: {stats['uptime_seconds']:.0f}s")
+
+# Run the event listener
+asyncio.run(main())
+```
+
+### Multi-Environment Configuration
 ```python
 from opensecureconf_client import OpenSecureConfClient
 
@@ -161,41 +223,7 @@ with OpenSecureConfClient(
     # Production and staging remain untouched
 ```
 
-### Using Context Manager (Recommended)
-
-```python
-from opensecureconf_client import OpenSecureConfClient
-
-with OpenSecureConfClient(
-    base_url="http://localhost:9000",
-    user_key="my-secure-key-min-8-chars"
-) as client:
-    # Create and use configurations
-    config = client.create("app", {"version": "1.0.0", "debug": False}, "production")
-    print(config)
-    # Session automatically closed when exiting context
-```
-
-### Enhanced Client with All Features
-
-```python
-from opensecureconf_client_enhanced import OpenSecureConfClient
-
-# Initialize with advanced features
-client = OpenSecureConfClient(
-    base_url="http://localhost:9000",
-    user_key="my-secure-key-min-8-chars",
-    api_key="cluster-secret-key-123",
-    enable_retry=True,          # Enable automatic retry
-    max_retries=3,              # Max retry attempts
-    backoff_factor=1.0,         # Exponential backoff factor
-    pool_connections=20,        # Connection pool size
-    pool_maxsize=50,            # Max pool size
-    log_level="INFO"            # Logging level
-)
-
-# Use all the enhanced features...
-```
+## 🎯 Core Features
 
 ## 🎯 Core Features
 
@@ -698,27 +726,558 @@ if status['healthy_nodes'] < status['total_nodes']:
     print(f"Warning: {status['total_nodes'] - status['healthy_nodes']} nodes are down")
 ```
 
+### Real-Time SSE Events
+
+Subscribe to real-time configuration change notifications using Server-Sent Events (SSE).
+
+#### Basic SSE Usage
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient, SSEEventData
+
+client = OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-key",
+    api_key="api-key"
+)
+
+async def on_event(event: SSEEventData):
+    """Handle incoming SSE events"""
+    print(f"Event: {event.event_type}")
+    print(f"Key: {event.key}@{event.environment}")
+    print(f"Category: {event.category}")
+    print(f"Timestamp: {event.timestamp}")
+
+async def main():
+    # Create SSE client
+    sse = client.create_sse_client(
+        environment="production",
+        on_event=on_event
+    )
+    
+    # Connect and listen
+    async with sse:
+        await sse.connect()
+        await asyncio.sleep(3600)  # Listen for 1 hour
+
+asyncio.run(main())
+```
+
+#### SSE Event Filtering
+```python
+# Subscribe to all events
+sse = client.create_sse_client()
+
+# Subscribe to production events only
+sse = client.create_sse_client(environment="production")
+
+# Subscribe to specific key in staging
+sse = client.create_sse_client(
+    key="database",
+    environment="staging"
+)
+
+# Subscribe to all database configurations
+sse = client.create_sse_client(category="database")
+
+# Subscribe to specific key + environment + category
+sse = client.create_sse_client(
+    key="api_token",
+    environment="production",
+    category="auth"
+)
+```
+
+#### SSE Event Types
+
+Events are emitted for the following operations:
+
+- **`connected`**: Initial connection confirmation
+- **`created`**: New configuration created
+- **`updated`**: Configuration updated
+- **`deleted`**: Configuration deleted
+- **`sync`**: Cluster synchronization event
+
+#### SSE Statistics
+```python
+async def main():
+    sse = client.create_sse_client(environment="production")
+    
+    async with sse:
+        await sse.connect()
+        
+        # Wait for some events
+        await asyncio.sleep(60)
+        
+        # Get statistics
+        stats = sse.get_statistics()
+        
+        print(f"Events received: {stats['events_received']}")
+        print(f"By type: {stats['events_by_type']}")
+        print(f"Keep-alives: {stats['keepalives_received']}")
+        print(f"Reconnections: {stats['reconnections']}")
+        print(f"Uptime: {stats['uptime_seconds']:.0f}s")
+        print(f"Errors: {stats['errors']}")
+```
+
+#### Advanced SSE Example: Auto-Reload Configuration
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient, SSEEventData
+
+class ConfigManager:
+    """Configuration manager with auto-reload on changes"""
+    
+    def __init__(self, client: OpenSecureConfClient, environment: str):
+        self.client = client
+        self.environment = environment
+        self.configs = {}
+        self.sse = None
+    
+    async def initialize(self):
+        """Load initial configs and start SSE listener"""
+        # Load all configurations
+        configs = self.client.list_all(environment=self.environment)
+        for config in configs:
+            self.configs[config['key']] = config['value']
+        
+        # Start SSE listener
+        self.sse = self.client.create_sse_client(
+            environment=self.environment,
+            on_event=self._on_config_change,
+            auto_reconnect=True
+        )
+        
+        async with self.sse:
+            await self.sse.connect()
+            await asyncio.Future()  # Run forever
+    
+    async def _on_config_change(self, event: SSEEventData):
+        """Handle configuration changes"""
+        if event.event_type == "updated":
+            # Reload updated configuration
+            config = self.client.read(event.key, event.environment)
+            self.configs[event.key] = config['value']
+            print(f"✅ Reloaded: {event.key}")
+        
+        elif event.event_type == "created":
+            # Add new configuration
+            config = self.client.read(event.key, event.environment)
+            self.configs[event.key] = config['value']
+            print(f"✅ Added: {event.key}")
+        
+        elif event.event_type == "deleted":
+            # Remove deleted configuration
+            self.configs.pop(event.key, None)
+            print(f"✅ Removed: {event.key}")
+    
+    def get(self, key: str, default=None):
+        """Get configuration value"""
+        return self.configs.get(key, default)
+
+# Usage
+async def main():
+    client = OpenSecureConfClient(
+        base_url="http://localhost:9000",
+        user_key="my-key"
+    )
+    
+    manager = ConfigManager(client, environment="production")
+    await manager.initialize()
+
+asyncio.run(main())
+```
+
+#### SSE with Multiple Filters
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient
+
+async def main():
+    client = OpenSecureConfClient(
+        base_url="http://localhost:9000",
+        user_key="my-key"
+    )
+    
+    # Create multiple SSE clients with different filters
+    tasks = []
+    
+    # Monitor all production events
+    sse_prod = client.create_sse_client(
+        environment="production",
+        on_event=lambda e: print(f"[PROD] {e.event_type}: {e.key}")
+    )
+    tasks.append(sse_prod.connect())
+    
+    # Monitor all database configs
+    sse_db = client.create_sse_client(
+        category="database",
+        on_event=lambda e: print(f"[DB] {e.event_type}: {e.key}")
+    )
+    tasks.append(sse_db.connect())
+    
+    # Monitor specific key
+    sse_api = client.create_sse_client(
+        key="api_token",
+        on_event=lambda e: print(f"[API] {e.event_type}: {e.key}")
+    )
+    tasks.append(sse_api.connect())
+    
+    # Run all listeners
+    await asyncio.gather(*tasks)
+
+asyncio.run(main())
+```
+
+### Cluster Awareness
+
+Monitor and interact with OpenSecureConf clusters:
+
+```python
+# Check cluster status
+status = client.get_cluster_status()
+if status['enabled']:
+    print(f"Cluster Mode: {status['mode']}")  # REPLICA  
+    print(f"Node ID: {status['node_id']}")
+    print(f"Healthy Nodes: {status['healthy_nodes']}/{status['total_nodes']}")
+else:
+    print("Clustering is disabled")
+
+# Check node health
+health = client.get_cluster_health()
+print(f"Node Status: {health['status']}")
+```
+
+**Cluster Modes:**
+- **REPLICA**: Active-active replication with automatic synchronization
+
+### Batch Operations
+
+Perform multiple operations efficiently:
+
+#### Bulk Create
+
+```python
+# Create multiple configurations at once (environment REQUIRED for each)
+configs_to_create = [
+    {
+        "key": "service1",
+        "value": {"url": "http://service1.local", "timeout": 30},
+        "environment": "production",  # REQUIRED
+        "category": "microservices"
+    },
+    {
+        "key": "service1",
+        "value": {"url": "http://service1.staging.local", "timeout": 30},
+        "environment": "staging",  # REQUIRED (same key, different environment)
+        "category": "microservices"
+    },
+    {
+        "key": "service2",
+        "value": {"url": "http://service2.local", "timeout": 60},
+        "environment": "production",  # REQUIRED
+        "category": "microservices"
+    }
+]
+
+# Create all configurations (stop on first error)
+results = client.bulk_create(configs_to_create)
+print(f"Created {len(results)} configurations")
+
+# Create all configurations (continue on errors)
+results = client.bulk_create(configs_to_create, ignore_errors=True)
+print(f"Created {len(results)} configurations")
+```
+
+#### Bulk Read
+
+```python
+# Read multiple configurations at once (environment REQUIRED for each)
+items = [
+    {"key": "service1", "environment": "production"},
+    {"key": "service1", "environment": "staging"},
+    {"key": "service2", "environment": "production"},
+    {"key": "api_settings", "environment": "production"}
+]
+
+# Read all (stop on first error)
+configs = client.bulk_read(items)
+
+# Read all (skip missing keys)
+configs = client.bulk_read(items, ignore_errors=True)
+for config in configs:
+    print(f"{config['key']} ({config['environment']}): {config['value']}")
+```
+
+#### Bulk Delete
+
+```python
+# Delete multiple configurations (environment REQUIRED for each)
+items_to_delete = [
+    {"key": "temp1", "environment": "staging"},
+    {"key": "temp2", "environment": "staging"},
+    {"key": "temp3", "environment": "development"}
+]
+
+# Delete all (stop on first error)
+result = client.bulk_delete(items_to_delete)
+
+# Delete all (continue on errors)
+result = client.bulk_delete(items_to_delete, ignore_errors=True)
+print(f"Deleted: {len(result['deleted'])}")
+print(f"Failed: {len(result['failed'])}")
+
+# Inspect failures
+for failure in result['failed']:
+    print(f"Failed to delete '{failure['key']}' from '{failure['environment']}': {failure['error']}")
+```
+
+### Retry Logic
+
+The enhanced client includes automatic retry with exponential backoff:
+
+```python
+# Configure retry behavior
+client = OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-key",
+    enable_retry=True,
+    max_retries=5,              # Retry up to 5 times
+    backoff_factor=2.0,         # 2^n seconds between retries
+    timeout=30
+)
+
+# Automatic retry on transient failures (429, 500, 502, 503, 504)
+try:
+    config = client.read("my_config", "production")
+except Exception as e:
+    print(f"Failed after {client.max_retries} retries: {e}")
+```
+
+**Retry Strategy:**
+- Status codes: `429, 500, 502, 503, 504`
+- HTTP methods: All methods including POST
+- Backoff: `backoff_factor * (2 ^ retry_count)` seconds
+
+### Health Checks
+
+Built-in health monitoring:
+
+```python
+# Simple ping check
+if client.ping():
+    print("✓ Server is healthy and reachable")
+else:
+    print("✗ Server is not reachable")
+
+# Get detailed service information
+info = client.get_service_info()
+print(f"Service: {info['service']}")
+print(f"Version: {info['version']}")
+print(f"Features: {', '.join(info['features'])}")
+print(f"Cluster Enabled: {info['cluster_enabled']}")
+
+# Monitor cluster health
+if info['cluster_enabled']:
+    health = client.get_cluster_health()
+    print(f"Cluster Health: {health['status']}")
+```
+
+### Utility Methods
+
+Convenient helper methods:
+
+#### Check Existence
+
+```python
+# Check if a key exists in specific environment
+if client.exists("database", "production"):
+    print("Configuration exists in production")
+    config = client.read("database", "production")
+else:
+    print("Configuration does not exist in production")
+    config = client.create("database", {"host": "localhost"}, "production")
+```
+
+#### Get with Default
+
+```python
+# Get configuration or return default (environment REQUIRED)
+config = client.get_or_default(
+    "optional_feature",
+    "production",
+    default={"enabled": False, "timeout": 30}
+)
+
+# Use the configuration
+if config['value']['enabled']:
+    timeout = config['value']['timeout']
+```
+
+#### Count Configurations
+
+```python
+# Count all configurations
+total = client.count()
+print(f"Total configurations: {total}")
+
+# Count by environment
+prod_count = client.count(environment="production")
+staging_count = client.count(environment="staging")
+print(f"Production: {prod_count}, Staging: {staging_count}")
+
+# Count by category
+db_count = client.count(category="database")
+
+# Count by both
+prod_db_count = client.count(category="database", environment="production")
+```
+
+#### List Categories and Environments
+
+```python
+# Get all unique categories
+categories = client.list_categories()
+print(f"Available categories: {', '.join(categories)}")
+
+# Get all unique environments
+environments = client.list_environments()
+print(f"Available environments: {', '.join(environments)}")
+
+# Process by environment
+for env in environments:
+    count = client.count(environment=env)
+    print(f"{env}: {count} configurations")
+```
+
+## 🔧 Advanced Usage
+
+### SSE with Custom Reconnection Strategy
+```python
+from opensecureconf_client import OpenSecureConfClient
+
+client = OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-key"
+)
+
+sse = client.create_sse_client(
+    environment="production",
+    auto_reconnect=True,
+    max_reconnect_attempts=10,      # Try 10 times then stop
+    reconnect_delay=5.0,             # Start with 5 second delay
+    reconnect_backoff=2.0,           # Double delay each attempt
+    max_reconnect_delay=60.0,        # Max 60 seconds between attempts
+    log_level="DEBUG"
+)
+```
+
+### SSE Connection Monitoring
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient
+
+async def monitor_sse():
+    client = OpenSecureConfClient(
+        base_url="http://localhost:9000",
+        user_key="my-key"
+    )
+    
+    sse = client.create_sse_client(environment="production")
+    
+    async with sse:
+        await sse.connect()
+        
+        # Monitor connection status
+        while True:
+            if sse.is_connected():
+                stats = sse.get_statistics()
+                print(f"✅ Connected - Events: {stats['events_received']}")
+            else:
+                print("❌ Disconnected")
+            
+            await asyncio.sleep(10)
+
+asyncio.run(monitor_sse())
+```
+
+### Combining CRUD and SSE
+```python
+import asyncio
+from opensecureconf_client import OpenSecureConfClient, SSEEventData
+
+# Synchronous client for CRUD
+client = OpenSecureConfClient(
+    base_url="http://localhost:9000",
+    user_key="my-key"
+)
+
+# Track changes
+changes = []
+
+async def on_event(event: SSEEventData):
+    changes.append({
+        'type': event.event_type,
+        'key': event.key,
+        'environment': event.environment,
+        'timestamp': event.timestamp
+    })
+
+async def main():
+    # Start SSE listener
+    sse = client.create_sse_client(
+        environment="production",
+        on_event=on_event
+    )
+    
+    async with sse:
+        await sse.connect()
+        await asyncio.sleep(1)  # Wait for connection
+        
+        # Perform CRUD operations (will trigger events)
+        client.create("test1", {"value": 1}, "production")
+        await asyncio.sleep(0.5)
+        
+        client.update("test1", "production", {"value": 2})
+        await asyncio.sleep(0.5)
+        
+        client.delete("test1", "production")
+        await asyncio.sleep(0.5)
+        
+        # Check captured events
+        print(f"Captured {len(changes)} events:")
+        for change in changes:
+            print(f"  - {change['type']}: {change['key']}")
+
+asyncio.run(main())
+```
+
+ 
 ## 📚 API Reference
 
 ### OpenSecureConfClient
 
 Main client class for interacting with OpenSecureConf API.
 
-#### Constructor
+### SSEClient (New!)
 
+Asynchronous client for real-time configuration change notifications.
+
+#### Constructor
 ```python
-OpenSecureConfClient(
+SSEClient(
     base_url: str,
-    user_key: str,
     api_key: Optional[str] = None,
-    timeout: int = 30,
-    verify_ssl: bool = True,
-    enable_retry: bool = True,
-    max_retries: int = 3,
-    backoff_factor: float = 1.0,
-    pool_connections: int = 10,
-    pool_maxsize: int = 20,
-    log_level: str = "WARNING"
+    key: Optional[str] = None,
+    environment: Optional[str] = None,
+    category: Optional[str] = None,
+    on_event: Optional[Callable[[SSEEventData], Awaitable[None]]] = None,
+    auto_reconnect: bool = True,
+    max_reconnect_attempts: int = -1,
+    reconnect_delay: float = 5.0,
+    reconnect_backoff: float = 2.0,
+    max_reconnect_delay: float = 60.0,
+    log_level: str = "INFO"
 )
 ```
 
@@ -726,414 +1285,179 @@ OpenSecureConfClient(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `base_url` | `str` | Required | Base URL of the OpenSecureConf API server |
-| `user_key` | `str` | Required | User encryption key (minimum 8 characters) |
-| `api_key` | `Optional[str]` | `None` | API key for authentication (if enabled on server) |
-| `timeout` | `int` | `30` | Request timeout in seconds |
-| `verify_ssl` | `bool` | `True` | Verify SSL certificates |
-| `enable_retry` | `bool` | `True` | Enable automatic retry with exponential backoff |
-| `max_retries` | `int` | `3` | Maximum number of retry attempts |
-| `backoff_factor` | `float` | `1.0` | Exponential backoff multiplier |
-| `pool_connections` | `int` | `10` | Number of connection pools to cache |
-| `pool_maxsize` | `int` | `20` | Maximum size of the connection pool |
-| `log_level` | `str` | `"WARNING"` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `base_url` | `str` | Required | Base URL of the OpenSecureConf API |
+| `api_key` | `Optional[str]` | `None` | API key for authentication |
+| `key` | `Optional[str]` | `None` | Filter by specific configuration key |
+| `environment` | `Optional[str]` | `None` | Filter by environment |
+| `category` | `Optional[str]` | `None` | Filter by category |
+| `on_event` | `Optional[Callable]` | `None` | Async callback for event handling |
+| `auto_reconnect` | `bool` | `True` | Enable automatic reconnection |
+| `max_reconnect_attempts` | `int` | `-1` | Max reconnection attempts (-1 = infinite) |
+| `reconnect_delay` | `float` | `5.0` | Initial delay between reconnections (seconds) |
+| `reconnect_backoff` | `float` | `2.0` | Backoff multiplier for reconnection delay |
+| `max_reconnect_delay` | `float` | `60.0` | Maximum reconnection delay (seconds) |
+| `log_level` | `str` | `"INFO"` | Logging level |
 
 #### Methods
 
-##### Configuration CRUD
+##### `async connect() -> None`
 
-###### `create(key: str, value: Union[Dict, str, int, bool, list], environment: str, category: Optional[str] = None) -> Dict[str, Any]`
-
-Create a new encrypted configuration entry.
-
-**Parameters:**
-- `key`: Configuration key (1-255 characters)
-- `value`: Configuration data (dict, string, int, bool, or list)
-- `environment`: Environment identifier (REQUIRED, max 100 characters)
-- `category`: Optional category for grouping (max 100 characters)
-
-**Returns:** Dictionary with created configuration
-
-**Raises:**
-- `ConfigurationExistsError`: If (key, environment) already exists
-- `ValueError`: If parameters are invalid
+Connect to SSE stream and start receiving events.
 
 **Example:**
 ```python
-# Same key in different environments
-prod_config = client.create("database", {"host": "db.prod.com"}, "production", "config")
-staging_config = client.create("database", {"host": "db.staging.com"}, "staging", "config")
+async with sse:
+    await sse.connect()
+    await asyncio.sleep(3600)  # Listen for 1 hour
 ```
 
-###### `read(key: str, environment: str) -> Dict[str, Any]`
+##### `async disconnect() -> None`
 
-Read and decrypt a configuration entry by key and environment.
-
-**Parameters:**
-- `key`: Configuration key to retrieve
-- `environment`: Environment identifier (REQUIRED)
-
-**Returns:** Dictionary with configuration
-
-**Raises:**
-- `ConfigurationNotFoundError`: If (key, environment) does not exist
-- `ValueError`: If parameters are invalid
+Disconnect from SSE stream and cleanup resources.
 
 **Example:**
 ```python
-prod_config = client.read("database", "production")
-staging_config = client.read("database", "staging")
+await sse.disconnect()
 ```
 
-###### `update(key: str, environment: str, value: Union[Dict, str, int, bool, list], category: Optional[str] = None) -> Dict[str, Any]`
+##### `get_statistics() -> Dict[str, Any]`
 
-Update an existing configuration entry.
+Get comprehensive SSE connection statistics.
 
-**Parameters:**
-- `key`: Configuration key to update
-- `environment`: Environment identifier (REQUIRED, cannot be changed)
-- `value`: New configuration data
-- `category`: Optional new category
-
-**Returns:** Dictionary with updated configuration
-
-**Raises:**
-- `ConfigurationNotFoundError`: If (key, environment) does not exist
-- `ValueError`: If parameters are invalid
+**Returns:** Dictionary with statistics including:
+- `events_received`: Total events received
+- `events_by_type`: Breakdown by event type
+- `keepalives_received`: Number of keep-alive messages
+- `reconnections`: Number of reconnection attempts
+- `uptime_seconds`: Connection uptime
+- `errors`: Number of errors
 
 **Example:**
 ```python
-updated = client.update("database", "production", {"host": "db-new.prod.com"})
+stats = sse.get_statistics()
+print(f"Events: {stats['events_received']}")
 ```
 
-###### `delete(key: str, environment: str) -> Dict[str, str]`
+##### `is_connected() -> bool`
 
-Delete a configuration entry permanently from specific environment.
+Check if SSE client is currently connected.
 
-**Parameters:**
-- `key`: Configuration key to delete
-- `environment`: Environment identifier (REQUIRED)
-
-**Returns:** Dictionary with success message
-
-**Raises:**
-- `ConfigurationNotFoundError`: If (key, environment) does not exist
-- `ValueError`: If parameters are invalid
+**Returns:** `True` if connected, `False` otherwise
 
 **Example:**
 ```python
-# Delete from staging only
-result = client.delete("database", "staging")
-# Production remains untouched
+if sse.is_connected():
+    print("Receiving events")
 ```
 
-###### `list_all(category: Optional[str] = None, environment: Optional[str] = None) -> List[Dict[str, Any]]`
+##### `get_subscription_id() -> Optional[str]`
 
-List all configurations with optional filters.
+Get the current subscription ID.
 
-**Parameters:**
-- `category`: Optional category filter
-- `environment`: Optional environment filter
-
-**Returns:** List of configuration dictionaries
+**Returns:** Subscription ID if connected, `None` otherwise
 
 **Example:**
 ```python
-# List all production configurations
-prod_configs = client.list_all(environment="production")
-
-# List all database configurations
-db_configs = client.list_all(category="database")
-
-# List production database configurations
-configs = client.list_all(category="database", environment="production")
+sub_id = sse.get_subscription_id()
+print(f"Subscription: {sub_id}")
 ```
 
-##### Batch Operations
+### SSEEventData
 
-###### `bulk_create(configs: List[Dict[str, Any]], ignore_errors: bool = False) -> List[Dict[str, Any]]`
+Data class representing a received SSE event.
 
-Create multiple configurations in batch.
+**Attributes:**
 
-**Parameters:**
-- `configs`: List of configuration dictionaries with 'key', 'value', 'environment' (REQUIRED), and optional 'category'
-- `ignore_errors`: Continue on errors and return partial results
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `event_type` | `str` | Event type (connected, created, updated, deleted, sync) |
+| `key` | `Optional[str]` | Configuration key affected |
+| `environment` | `Optional[str]` | Environment where change occurred |
+| `category` | `Optional[str]` | Configuration category |
+| `timestamp` | `Optional[str]` | When event occurred (ISO 8601) |
+| `node_id` | `Optional[str]` | Cluster node that originated change |
+| `data` | `Optional[Dict]` | Additional event-specific data |
+| `subscription_id` | `Optional[str]` | Subscription ID (for connected events) |
+| `raw_data` | `Dict` | Raw JSON data from event |
 
-**Returns:** List of created configurations
+### OpenSecureConfClient.create_sse_client()
 
-**Raises:**
-- `ValueError`: If configs format is invalid or environment is missing
-- `OpenSecureConfError`: If creation fails and ignore_errors is False
-
-**Example:**
+Create an SSE client for real-time notifications.
 ```python
-configs = [
-    {"key": "db", "value": {"host": "localhost"}, "environment": "production", "category": "config"},
-    {"key": "db", "value": {"host": "localhost"}, "environment": "staging", "category": "config"}
-]
-results = client.bulk_create(configs)
+client.create_sse_client(
+    key: Optional[str] = None,
+    environment: Optional[str] = None,
+    category: Optional[str] = None,
+    on_event: Optional[Callable[[SSEEventData], Awaitable[None]]] = None,
+    auto_reconnect: bool = True,
+    max_reconnect_attempts: int = -1,
+    log_level: Optional[str] = None
+) -> SSEClient
 ```
 
-###### `bulk_read(items: List[Dict[str, str]], ignore_errors: bool = False) -> List[Dict[str, Any]]`
-
-Read multiple configurations in batch.
-
-**Parameters:**
-- `items`: List of dictionaries with 'key' and 'environment' fields
-- `ignore_errors`: Skip missing keys and return partial results
-
-**Returns:** List of configuration dictionaries
-
 **Example:**
 ```python
-items = [
-    {"key": "database", "environment": "production"},
-    {"key": "database", "environment": "staging"}
-]
-configs = client.bulk_read(items)
-```
-
-###### `bulk_delete(items: List[Dict[str, str]], ignore_errors: bool = False) -> Dict[str, Any]`
-
-Delete multiple configurations in batch.
-
-**Parameters:**
-- `items`: List of dictionaries with 'key' and 'environment' fields
-- `ignore_errors`: Continue on errors
-
-**Returns:** Dictionary with summary: `{"deleted": [...], "failed": [...]}`
-
-**Example:**
-```python
-items = [
-    {"key": "temp1", "environment": "staging"},
-    {"key": "temp2", "environment": "staging"}
-]
-result = client.bulk_delete(items)
-```
-
-##### Utility Methods
-
-###### `exists(key: str, environment: str) -> bool`
-
-Check if a configuration key exists in specific environment.
-
-**Parameters:**
-- `key`: Configuration key to check
-- `environment`: Environment identifier (REQUIRED)
-
-**Returns:** `True` if key exists in the environment, `False` otherwise
-
-**Example:**
-```python
-if client.exists("database", "production"):
-    config = client.read("database", "production")
-```
-
-###### `get_or_default(key: str, environment: str, default: Union[Dict, str, int, bool, list]) -> Dict[str, Any]`
-
-Get configuration or return default if not found.
-
-**Parameters:**
-- `key`: Configuration key to retrieve
-- `environment`: Environment identifier (REQUIRED)
-- `default`: Default value to return if not found
-
-**Returns:** Configuration dictionary or default
-
-**Example:**
-```python
-config = client.get_or_default("optional", "production", {"enabled": False})
-```
-
-###### `count(category: Optional[str] = None, environment: Optional[str] = None) -> int`
-
-Count configurations, optionally filtered by category and/or environment.
-
-**Parameters:**
-- `category`: Optional category filter
-- `environment`: Optional environment filter
-
-**Returns:** Number of configurations
-
-**Example:**
-```python
-total = client.count()
-prod_count = client.count(environment="production")
-```
-
-###### `list_categories() -> List[str]`
-
-Get list of all unique categories.
-
-**Returns:** Sorted list of category names
-
-**Example:**
-```python
-categories = client.list_categories()
-```
-
-###### `list_environments() -> List[str]`
-
-Get list of all unique environments.
-
-**Returns:** Sorted list of environment names
-
-**Example:**
-```python
-environments = client.list_environments()
-print(f"Environments: {', '.join(environments)}")
-```
-
-##### Session Management
-
-###### `close()`
-
-Close the underlying HTTP session.
-
-**Example:**
-```python
-client.close()
-```
-
-###### Context Manager
-
-The client supports context manager protocol for automatic cleanup.
-
-**Example:**
-```python
-with OpenSecureConfClient(base_url="...", user_key="...") as client:
-    config = client.create("key", {"value": "data"}, "production")
-# Session automatically closed
+sse = client.create_sse_client(
+    environment="production",
+    on_event=my_event_handler
+)
 ```
 
 ## ⚠️ Error Handling
 
 ### Exception Hierarchy
-
 ```
 OpenSecureConfError (base exception)
 ├── AuthenticationError          # Invalid or missing credentials
 ├── ConfigurationNotFoundError   # Configuration (key, environment) does not exist
 ├── ConfigurationExistsError     # Configuration (key, environment) already exists
-└── ClusterError                 # Cluster operation failed
+├── ClusterError                 # Cluster operation failed
+├── SSEError                     # SSE operation failed
+└── SSENotAvailableError         # httpx library not installed
 ```
 
-### Handling Errors
-
+### SSE Error Handling
 ```python
 from opensecureconf_client import (
     OpenSecureConfClient,
-    AuthenticationError,
-    ConfigurationNotFoundError,
-    ConfigurationExistsError,
-    ClusterError,
-    OpenSecureConfError
+    SSEError,
+    SSENotAvailableError
 )
 
 try:
-    config = client.create("mykey", {"data": "value"}, "production")
-except AuthenticationError:
-    print("Authentication failed - check your user_key and api_key")
-except ConfigurationExistsError:
-    print("Configuration already exists in this environment - use update() instead")
-    config = client.update("mykey", "production", {"data": "new_value"})
-except ConfigurationNotFoundError:
-    print("Configuration not found in specified environment")
-except ClusterError as e:
-    print(f"Cluster error: {e}")
-except OpenSecureConfError as e:
-    print(f"API error: {e}")
-except ConnectionError as e:
-    print(f"Connection error: {e}")
+    client = OpenSecureConfClient(
+        base_url="http://localhost:9000",
+        user_key="my-key"
+    )
+    
+    sse = client.create_sse_client(environment="production")
+    
+except SSENotAvailableError:
+    print("SSE requires httpx library")
+    print("Install with: pip install opensecureconf-client[sse]")
+
+except SSEError as e:
+    print(f"SSE error: {e}")
+
+# Handle SSE connection errors
+async def main():
+    try:
+        async with sse:
+            await sse.connect()
+            await asyncio.sleep(3600)
+    
+    except SSEError as e:
+        print(f"SSE connection failed: {e}")
+    
+    except asyncio.CancelledError:
+        print("SSE connection cancelled")
+
+asyncio.run(main())
 ```
 
-### Best Practices for Error Handling
-
-```python
-# 1. Use specific exceptions first
-try:
-    config = client.read("important_config", "production")
-except ConfigurationNotFoundError:
-    # Create with defaults if not found
-    config = client.create("important_config", {"default": "value"}, "production")
-
-# 2. Use exists() to avoid exceptions
-if not client.exists("optional_config", "production"):
-    client.create("optional_config", {"data": "value"}, "production")
-
-# 3. Use get_or_default() for optional configurations
-config = client.get_or_default("optional", "production", {"enabled": False})
-
-# 4. Handle bulk operation failures
-result = client.bulk_delete(items, ignore_errors=True)
-if result['failed']:
-    print(f"Some deletions failed: {result['failed']}")
-```
-
-## ⚙️ Configuration Options
-
-### Production Configuration
-
-```python
-from opensecureconf_client_enhanced import OpenSecureConfClient
-import os
-
-# Production-ready configuration
-client = OpenSecureConfClient(
-    base_url=os.getenv("OSC_URL"),
-    user_key=os.getenv("OSC_USER_KEY"),
-    api_key=os.getenv("OSC_API_KEY"),
-    timeout=60,                     # Longer timeout for production
-    verify_ssl=True,                # Always verify SSL in production
-    enable_retry=True,
-    max_retries=5,                  # More retries for reliability
-    backoff_factor=2.0,             # Aggressive backoff
-    pool_connections=50,            # Large pool for high traffic
-    pool_maxsize=100,
-    log_level="INFO"                # Moderate logging
-)
-```
-
-### Development Configuration
-
-```python
-# Development-friendly configuration
-client = OpenSecureConfClient(
-    base_url="http://localhost:9000",
-    user_key="dev-key-12345678",
-    api_key="dev-api-key",
-    timeout=30,
-    verify_ssl=False,               # Self-signed certs in dev
-    enable_retry=False,             # Fail fast in development
-    pool_connections=5,             # Smaller pool
-    pool_maxsize=10,
-    log_level="DEBUG"               # Verbose logging for debugging
-)
-```
-
-### Environment Variables
-
-Recommended environment variables:
-
-```bash
-# Required
-export OSC_URL="http://localhost:9000"
-export OSC_USER_KEY="your-secure-key-min-8-chars"
-
-# Optional
-export OSC_API_KEY="cluster-secret-key-123"
-export OSC_TIMEOUT="30"
-export OSC_VERIFY_SSL="true"
-export OSC_RETRY="true"
-export OSC_MAX_RETRIES="3"
-export OSC_BACKOFF_FACTOR="1.0"
-export OSC_POOL_CONNECTIONS="10"
-export OSC_POOL_MAXSIZE="20"
-export OSC_LOG_LEVEL="INFO"
-```
 
 ## 💡 Best Practices
+
 
 ### 1. Use Context Managers
 
@@ -1289,6 +1613,83 @@ for env in environments:
 all_configs = client.list_all()  # Hard to manage
 ```
 
+
+### 11. Use SSE for Real-Time Updates (New!)
+```python
+# ✅ Good: Real-time configuration updates
+async def start_config_watcher():
+    sse = client.create_sse_client(
+        environment="production",
+        on_event=reload_app_config,
+        auto_reconnect=True
+    )
+    
+    async with sse:
+        await sse.connect()
+        # Application automatically reloads on config changes
+
+# ❌ Avoid: Polling for changes
+while True:
+    configs = client.list_all(environment="production")
+    # Check for changes...
+    await asyncio.sleep(10)  # Inefficient polling
+```
+
+### 12. Filter SSE Events Appropriately
+```python
+# ✅ Good: Specific filters reduce noise
+sse = client.create_sse_client(
+    key="database",              # Only this key
+    environment="production"     # Only this environment
+)
+
+# ❌ Avoid: No filters when you only need specific events
+sse = client.create_sse_client()  # Receives ALL events
+# Then filters in callback - inefficient
+```
+
+### 13. Handle SSE Reconnections Gracefully
+```python
+# ✅ Good: Configure reconnection strategy
+sse = client.create_sse_client(
+    environment="production",
+    auto_reconnect=True,
+    max_reconnect_attempts=10,
+    reconnect_delay=5.0
+)
+
+async def on_event(event):
+    if event.event_type == "connected":
+        # Reload all configs after reconnection
+        reload_all_configs()
+
+# ❌ Avoid: No reconnection handling
+sse = client.create_sse_client(
+    environment="production",
+    auto_reconnect=False  # Fails permanently on disconnect
+)
+```
+
+### 14. Monitor SSE Connection Health
+```python
+# ✅ Good: Regular health monitoring
+async def monitor():
+    while True:
+        if sse.is_connected():
+            stats = sse.get_statistics()
+            if stats['errors'] > 0:
+                logger.warning(f"SSE errors: {stats['errors']}")
+        else:
+            logger.error("SSE disconnected")
+        
+        await asyncio.sleep(60)
+
+# ❌ Avoid: No monitoring, silent failures
+async with sse:
+    await sse.connect()
+    await asyncio.sleep(3600)  # Hope it stays connected
+```
+
 ## 🔨 Development
 
 ### Setting Up Development Environment
@@ -1304,95 +1705,10 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install in development mode with all dependencies
 pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=opensecureconf_client --cov-report=html
-
-# Run specific test file
-pytest tests/test_client.py
-
-# Run with verbose output
-pytest -v
-
-# Run with logging
-pytest -s
-```
-
-### Code Quality
-
-```bash
-# Format code
-black opensecureconf_client.py
-black tests/
-
-# Sort imports
-isort opensecureconf_client.py tests/
-
-# Lint code
-flake8 opensecureconf_client.py
-pylint opensecureconf_client.py
-
-# Type checking
-mypy opensecureconf_client.py
-
-# Security check
-bandit -r opensecureconf_client.py
-```
-
-### Building Distribution
-
-```bash
-# Build package
-python -m build
-
-# Check distribution
-twine check dist/*
-
-# Upload to TestPyPI
-twine upload --repository testpypi dist/*
-
-# Upload to PyPI
-twine upload dist/*
-```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
-### Reporting Issues
-
-- Use the [GitHub issue tracker](https://github.com/lordraw77/OpenSecureConf/issues)
-- Include minimal reproducible example
-- Specify Python version and client version
-- Include relevant logs (with sensitive data removed)
-
-### Pull Requests
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass (`pytest`)
-6. Format code (`black`, `isort`)
-7. Lint code (`flake8`, `pylint`)
-8. Commit your changes (`git commit -m 'Add amazing feature'`)
-9. Push to the branch (`git push origin feature/amazing-feature`)
-10. Open a Pull Request
-
-### Code Style
-
-- Follow [PEP 8](https://peps.python.org/pep-0008/)
-- Use type hints
-- Write docstrings for all public methods
-- Maintain test coverage above 90%
-- Add examples for new features
+Contributions are welcome! Please follow these guidelines:]
 
 ## 📄 License
 
@@ -1404,11 +1720,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [PyPI Package](https://pypi.org/project/opensecureconf-client/)
 - [Issue Tracker](https://github.com/lordraw77/OpenSecureConf/issues)
 - [Documentation](https://github.com/lordraw77/OpenSecureConf/tree/main/docs)
-- [Changelog](https://github.com/lordraw77/OpenSecureConf/blob/main/CHANGELOG.md)
-
+ 
 ## 📮 Support
 
-- 📧 Email: support@opensecureconf.dev
 - 💬 GitHub Discussions: [opensecureconf/discussions](https://github.com/lordraw77/OpenSecureConf/discussions)
 - 🐛 Bug Reports: [opensecureconf/issues](https://github.com/lordraw77/OpenSecureConf/issues)
 
@@ -1417,7 +1731,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
 - Encryption powered by [cryptography](https://cryptography.io/)
 - HTTP client using [requests](https://requests.readthedocs.io/)
+- SSE support via [httpx](https://www.python-httpx.org/)
 
-***
+---
 
 **Made with ❤️ by the OpenSecureConf Team**
+
+**Version**: 3.1.0 (February 2026)

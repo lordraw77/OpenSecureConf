@@ -15,16 +15,28 @@ Enhanced Features:
 - Support for multiple value types (dict, str, int, bool, list)
 - Multi-environment support (same key in different environments)
 - Environment-based configuration isolation
+- **Real-time SSE event streaming with automatic reconnection**
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Callable, Awaitable
 import logging
 import time
 import requests
+import asyncio
+import json
+
 from requests.adapters import HTTPAdapter
 from requests.exceptions import Timeout, RequestException
+import requests
 from urllib3.util.retry import Retry
+from datetime import datetime
+from dataclasses import dataclass, field
 
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
 
 # ============================================================================
 # EXCEPTIONS
@@ -49,6 +61,532 @@ class ConfigurationExistsError(OpenSecureConfError):
 
 class ClusterError(OpenSecureConfError):
     """Raised when cluster operations fail."""
+
+class SSEError(OpenSecureConfError):
+    """Raised when SSE operations fail."""
+
+
+class SSENotAvailableError(SSEError):
+    """Raised when SSE functionality is not available (httpx not installed)."""
+
+
+# ============================================================================
+# SSE DATA CLASSES
+# ============================================================================
+
+
+@dataclass
+class SSEEventData:
+    """
+    Represents a received SSE event with parsed data.
+    
+    Attributes:
+        event_type: Type of event (connected, created, updated, deleted, sync)
+        key: Configuration key that was affected (None for 'connected' events)
+        environment: Environment where the change occurred (None for 'connected')
+        category: Optional category of the configuration
+        timestamp: When the event occurred (ISO 8601 format)
+        node_id: Optional cluster node that originated the change
+        data: Optional additional event-specific data
+        subscription_id: Subscription ID (only for 'connected' events)
+        raw_data: Raw JSON data from the event
+    
+    Example:
+```python
+        event = SSEEventData(
+            event_type="updated",
+            key="database",
+            environment="production",
+            category="config",
+            timestamp="2026-02-15T10:30:00Z",
+            node_id="node1:9000",
+            data=None,
+            subscription_id=None,
+            raw_data={...}
+        )
+```
+    """
+    event_type: str
+    key: Optional[str] = None
+    environment: Optional[str] = None
+    category: Optional[str] = None
+    timestamp: Optional[str] = None
+    node_id: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    subscription_id: Optional[str] = None
+    raw_data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class SSEStatistics:
+    """
+    Statistics for SSE connection and event tracking.
+    
+    Attributes:
+        events_received: Total number of events received
+        events_by_type: Count of events by type
+        keepalives_received: Number of keep-alive messages
+        reconnections: Number of reconnection attempts
+        connected_at: When the connection was established
+        last_event_at: When the last event was received
+        errors: Number of errors encountered
+    """
+    events_received: int = 0
+    events_by_type: Dict[str, int] = field(default_factory=lambda: {
+        "connected": 0,
+        "created": 0,
+        "updated": 0,
+        "deleted": 0,
+        "sync": 0
+    })
+    keepalives_received: int = 0
+    reconnections: int = 0
+    connected_at: Optional[datetime] = None
+    last_event_at: Optional[datetime] = None
+    errors: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert statistics to dictionary for serialization."""
+        return {
+            "events_received": self.events_received,
+            "events_by_type": dict(self.events_by_type),
+            "keepalives_received": self.keepalives_received,
+            "reconnections": self.reconnections,
+            "connected_at": self.connected_at.isoformat() if self.connected_at else None,
+            "last_event_at": self.last_event_at.isoformat() if self.last_event_at else None,
+            "errors": self.errors,
+            "uptime_seconds": (
+                (datetime.now() - self.connected_at).total_seconds()
+                if self.connected_at else 0
+            )
+        }
+
+
+# ============================================================================
+# SSE CLIENT
+# ============================================================================
+
+
+class SSEClient:
+    """
+    Asynchronous SSE client for real-time configuration change notifications.
+    
+    Connects to OpenSecureConf SSE endpoint and streams events in real-time.
+    Supports automatic reconnection, event filtering, callbacks, and statistics.
+    
+    Features:
+        - Granular filtering by key, environment, and category
+        - Automatic reconnection with exponential backoff
+        - Event callbacks for custom handling
+        - Connection statistics and monitoring
+        - Keep-alive handling
+        - Proper timeout configuration
+        - Context manager support
+    
+    Example:
+```python
+        import asyncio
+        from opensecureconf_client import SSEClient
+        
+        async def on_event(event: SSEEventData):
+            print(f"Config {event.key} {event.event_type} in {event.environment}")
+        
+        async def main():
+            client = SSEClient(
+                base_url="http://localhost:9000",
+                api_key="your-api-key",
+                environment="production",
+                on_event=on_event
+            )
+            
+            async with client:
+                await client.connect()
+        
+        asyncio.run(main())
+```
+    """
+    
+    def __init__(
+        self,
+        base_url: str,
+        api_key: Optional[str] = None,
+        key: Optional[str] = None,
+        environment: Optional[str] = None,
+        category: Optional[str] = None,
+        on_event: Optional[Callable[[SSEEventData], Awaitable[None]]] = None,
+        auto_reconnect: bool = True,
+        max_reconnect_attempts: int = -1,  # -1 = infinite
+        reconnect_delay: float = 5.0,
+        reconnect_backoff: float = 2.0,
+        max_reconnect_delay: float = 60.0,
+        log_level: str = "INFO"
+    ):
+        """
+        Initialize SSE client.
+        
+        Args:
+            base_url: Base URL of OpenSecureConf API
+            api_key: Optional API key for authentication
+            key: Optional filter by specific configuration key
+            environment: Optional filter by environment
+            category: Optional filter by category
+            on_event: Optional async callback for event handling
+            auto_reconnect: Enable automatic reconnection on disconnect
+            max_reconnect_attempts: Maximum reconnection attempts (-1 = infinite)
+            reconnect_delay: Initial delay between reconnections (seconds)
+            reconnect_backoff: Backoff multiplier for reconnection delay
+            max_reconnect_delay: Maximum reconnection delay (seconds)
+            log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        
+        Raises:
+            SSENotAvailableError: If httpx library is not installed
+        """
+        if not HTTPX_AVAILABLE:
+            raise SSENotAvailableError(
+                "SSE functionality requires httpx. Install with: pip install httpx"
+            )
+        
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.filters = {
+            "key": key,
+            "environment": environment,
+            "category": category
+        }
+        self.on_event = on_event
+        self.auto_reconnect = auto_reconnect
+        self.max_reconnect_attempts = max_reconnect_attempts
+        self.reconnect_delay = reconnect_delay
+        self.reconnect_backoff = reconnect_backoff
+        self.max_reconnect_delay = max_reconnect_delay
+        
+        # Setup logging
+        self.logger = logging.getLogger(f"{__name__}.SSE")
+        self.logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        
+        # State
+        self.stats = SSEStatistics()
+        self._client: Optional[httpx.AsyncClient] = None
+        self._connection_task: Optional[asyncio.Task] = None
+        self._is_running = False
+        self._should_stop = False
+        self._subscription_id: Optional[str] = None
+        
+        # Timeout configuration (infinite read for SSE)
+        self._timeout = httpx.Timeout(
+            connect=10.0,
+            read=None,  # Infinite read timeout for SSE
+            write=10.0,
+            pool=None
+        )
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        await self._create_client()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.disconnect()
+    
+    async def _create_client(self):
+        """Create httpx async client with proper configuration."""
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+            self.logger.debug("HTTP client created")
+    
+    async def connect(self) -> None:
+        """
+        Connect to SSE stream and start receiving events.
+        
+        This method starts a background task that maintains the SSE connection.
+        If auto_reconnect is enabled, it will automatically reconnect on failure.
+        
+        Raises:
+            SSEError: If connection fails and auto_reconnect is disabled
+        
+        Example:
+```python
+            async with client:
+                await client.connect()
+                # Keep running to receive events
+                await asyncio.sleep(3600)
+```
+        """
+        if self._is_running:
+            self.logger.warning("SSE client is already connected")
+            return
+        
+        await self._create_client()
+        self._should_stop = False
+        self._is_running = True
+        
+        # Start connection task
+        self._connection_task = asyncio.create_task(self._connection_loop())
+        self.logger.info("SSE connection started")
+    
+    async def disconnect(self) -> None:
+        """
+        Disconnect from SSE stream and cleanup resources.
+        
+        Stops the background connection task and closes the HTTP client.
+        
+        Example:
+```python
+            await client.disconnect()
+```
+        """
+        self._should_stop = True
+        self._is_running = False
+        
+        # Cancel connection task
+        if self._connection_task and not self._connection_task.done():
+            self._connection_task.cancel()
+            try:
+                await self._connection_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Close HTTP client
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+        
+        self.logger.info("SSE connection closed")
+    
+    async def _connection_loop(self) -> None:
+        """
+        Main connection loop with automatic reconnection.
+        
+        Maintains SSE connection and handles reconnection with exponential backoff.
+        """
+        reconnect_attempts = 0
+        current_delay = self.reconnect_delay
+        
+        while not self._should_stop:
+            try:
+                await self._listen()
+                
+                # Connection closed gracefully
+                if self._should_stop:
+                    break
+                
+                # Reset reconnection delay on successful connection
+                reconnect_attempts = 0
+                current_delay = self.reconnect_delay
+                
+            except asyncio.CancelledError:
+                self.logger.info("Connection loop cancelled")
+                break
+            
+            except Exception as e:
+                self.stats.errors += 1
+                self.logger.error(f"Connection error: {e}")
+                
+                if not self.auto_reconnect:
+                    raise SSEError(f"SSE connection failed: {e}") from e
+                
+                # Check reconnection limit
+                if self.max_reconnect_attempts >= 0 and reconnect_attempts >= self.max_reconnect_attempts:
+                    self.logger.error(
+                        f"Max reconnection attempts ({self.max_reconnect_attempts}) reached"
+                    )
+                    break
+                
+                # Reconnect with exponential backoff
+                reconnect_attempts += 1
+                self.stats.reconnections += 1
+                
+                self.logger.info(
+                    f"Reconnecting in {current_delay:.1f}s (attempt {reconnect_attempts})"
+                )
+                await asyncio.sleep(current_delay)
+                
+                # Increase delay with backoff
+                current_delay = min(
+                    current_delay * self.reconnect_backoff,
+                    self.max_reconnect_delay
+                )
+    
+    async def _listen(self) -> None:
+        """
+        Establish SSE connection and process events.
+        
+        Connects to the SSE endpoint and processes incoming events until
+        the connection is closed or an error occurs.
+        """
+        # Build request parameters
+        params = {k: v for k, v in self.filters.items() if v is not None}
+        headers = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        
+        url = f"{self.base_url}/sse/subscribe"
+        
+        self.logger.info(f"Connecting to SSE: {url}")
+        self.logger.debug(f"Filters: {params}")
+        
+        async with self._client.stream(
+            "GET",
+            url,
+            params=params,
+            headers=headers
+        ) as response:
+            if response.status_code != 200:
+                error_msg = f"SSE connection failed: HTTP {response.status_code}"
+                self.logger.error(error_msg)
+                raise SSEError(error_msg)
+            
+            self.stats.connected_at = datetime.now()
+            self.logger.info("✅ Connected to SSE stream")
+            
+            current_event = None
+            
+            async for line in response.aiter_lines():
+                if self._should_stop:
+                    break
+                
+                # Parse SSE format
+                if line.startswith("event: "):
+                    current_event = line[7:].strip()
+                
+                elif line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    await self._handle_event_data(current_event, data_str)
+                    current_event = None
+                
+                elif line.startswith(": "):
+                    # Keep-alive comment
+                    self.stats.keepalives_received += 1
+                    self.logger.debug(f"Keep-alive: {line[2:]}")
+                
+                elif line == "":
+                    # Empty line separates messages
+                    pass
+    
+    async def _handle_event_data(self, event_type: Optional[str], data_str: str) -> None:
+        """
+        Parse and handle event data from SSE stream.
+        
+        Args:
+            event_type: Type of event (connected, created, updated, deleted, sync)
+            data_str: JSON string containing event data
+        """
+        try:
+            raw_data = json.loads(data_str)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to parse event data: {e}")
+            return
+        
+        # Update statistics
+        self.stats.events_received += 1
+        self.stats.last_event_at = datetime.now()
+        if event_type:
+            self.stats.events_by_type[event_type] = (
+                self.stats.events_by_type.get(event_type, 0) + 1
+            )
+        
+        # Parse event data
+        event_data = SSEEventData(
+            event_type=event_type or "unknown",
+            key=raw_data.get("key"),
+            environment=raw_data.get("environment"),
+            category=raw_data.get("category"),
+            timestamp=raw_data.get("timestamp"),
+            node_id=raw_data.get("node_id"),
+            data=raw_data.get("data"),
+            subscription_id=raw_data.get("subscription_id"),
+            raw_data=raw_data
+        )
+        
+        # Log event
+        if event_type == "connected":
+            self._subscription_id = event_data.subscription_id
+            self.logger.info(
+                f"🔗 Connected - Subscription ID: {self._subscription_id}"
+            )
+            self.logger.debug(f"Filters: {raw_data.get('filters')}")
+        else:
+            icons = {
+                "created": "✨",
+                "updated": "🔄",
+                "deleted": "🗑️",
+                "sync": "🔄"
+            }
+            icon = icons.get(event_type, "📢")
+            self.logger.info(
+                f"{icon} {event_type.upper()}: {event_data.key}@{event_data.environment}"
+            )
+        
+        # Call user callback
+        if self.on_event:
+            try:
+                await self.on_event(event_data)
+            except Exception as e:
+                self.logger.error(f"Error in event callback: {e}")
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get SSE connection statistics.
+        
+        Returns:
+            Dictionary with connection statistics including:
+            - events_received: Total events received
+            - events_by_type: Breakdown by event type
+            - keepalives_received: Number of keep-alive messages
+            - reconnections: Number of reconnection attempts
+            - connected_at: Connection timestamp
+            - last_event_at: Last event timestamp
+            - uptime_seconds: Connection uptime
+        
+        Example:
+```python
+            stats = client.get_statistics()
+            print(f"Events received: {stats['events_received']}")
+            print(f"Uptime: {stats['uptime_seconds']:.0f}s")
+```
+        """
+        return self.stats.to_dict()
+    
+    def is_connected(self) -> bool:
+        """
+        Check if SSE client is currently connected.
+        
+        Returns:
+            True if connected and receiving events, False otherwise
+        
+        Example:
+```python
+            if client.is_connected():
+                print("Receiving events")
+```
+        """
+        return self._is_running and not self._should_stop
+    
+    def get_subscription_id(self) -> Optional[str]:
+        """
+        Get the current subscription ID.
+        
+        Returns:
+            Subscription ID if connected, None otherwise
+        
+        Example:
+```python
+            sub_id = client.get_subscription_id()
+            print(f"Subscription ID: {sub_id}")
+```
+        """
+        return self._subscription_id
+
+
+
 
 
 # ============================================================================
@@ -83,6 +621,30 @@ class OpenSecureConfClient:
         ...                              "production", "config")
         >>> staging_config = client.create("database", {"host": "db.staging.com", "port": 5432}, 
         ...                                 "staging", "config")
+        
+    Example:
+        >>> client = OpenSecureConfClient(
+        ...     base_url="http://localhost:9000",
+        ...     user_key="my-secret-key-123",
+        ...     api_key="optional-api-key",
+        ...     enable_retry=True,
+        ...     log_level="INFO"
+        ... )
+        >>> # Same key in different environments
+        >>> prod_config = client.create("database", {"host": "db.prod.com", "port": 5432}, 
+        ...                              "production", "config")
+        >>> staging_config = client.create("database", {"host": "db.staging.com", "port": 5432}, 
+        ...                                 "staging", "config")
+        >>> 
+        >>> # Subscribe to real-time events
+        >>> async def on_update(event):
+        ...     print(f"Config updated: {event.key}")
+        >>> 
+        >>> sse_client = client.create_sse_client(
+        ...     environment="production",
+        ...     on_event=on_update
+        ... )
+        
     """
 
     def __init__(
@@ -900,6 +1462,109 @@ class OpenSecureConfClient:
         """String representation of client."""
         return f"OpenSecureConfClient(base_url='{self.base_url}')"
 
+# ========================================================================
+    # SSE METHODS (NEW)
+    # ========================================================================
+
+    def create_sse_client(
+        self,
+        key: Optional[str] = None,
+        environment: Optional[str] = None,
+        category: Optional[str] = None,
+        on_event: Optional[Callable[[SSEEventData], Awaitable[None]]] = None,
+        auto_reconnect: bool = True,
+        max_reconnect_attempts: int = -1,
+        log_level: Optional[str] = None
+    ) -> SSEClient:
+        """
+        Create an SSE client for real-time configuration change notifications.
+        
+        The SSE client connects to the server's SSE endpoint and receives
+        events when configurations are created, updated, or deleted. Events
+        can be filtered by key, environment, and category.
+        
+        Args:
+            key: Optional filter by specific configuration key
+            environment: Optional filter by environment
+            category: Optional filter by category
+            on_event: Optional async callback function for event handling
+            auto_reconnect: Enable automatic reconnection on disconnect
+            max_reconnect_attempts: Maximum reconnection attempts (-1 = infinite)
+            log_level: Optional logging level (inherits from client if not specified)
+        
+        Returns:
+            SSEClient instance ready to connect
+        
+        Raises:
+            SSENotAvailableError: If httpx library is not installed
+        
+        Example:
+```python
+            import asyncio
+            
+            # Define event handler
+            async def on_config_change(event: SSEEventData):
+                print(f"Event: {event.event_type}")
+                print(f"Key: {event.key}@{event.environment}")
+                
+                if event.event_type == "updated":
+                    # Reload configuration
+                    config = client.read(event.key, event.environment)
+                    print(f"New value: {config['value']}")
+            
+            # Create SSE client
+            sse = client.create_sse_client(
+                environment="production",
+                on_event=on_config_change
+            )
+            
+            # Connect and listen
+            async def main():
+                async with sse:
+                    await sse.connect()
+                    # Keep running to receive events
+                    await asyncio.sleep(3600)
+            
+            asyncio.run(main())
+```
+        
+        Filter Examples:
+```python
+            # Subscribe to all events
+            sse = client.create_sse_client()
+            
+            # Subscribe to production events only
+            sse = client.create_sse_client(environment="production")
+            
+            # Subscribe to specific key in staging
+            sse = client.create_sse_client(
+                key="database",
+                environment="staging"
+            )
+            
+            # Subscribe to all database configurations
+            sse = client.create_sse_client(category="database")
+            
+            # Subscribe to specific key + category
+            sse = client.create_sse_client(
+                key="api_token",
+                category="auth",
+                environment="production"
+            )
+```
+        """
+        return SSEClient(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            key=key,
+            environment=environment,
+            category=category,
+            on_event=on_event,
+            auto_reconnect=auto_reconnect,
+            max_reconnect_attempts=max_reconnect_attempts,
+            log_level=log_level or self.logger.level
+        )
+
 
 # ============================================================================
 # EXPORTS
@@ -907,9 +1572,14 @@ class OpenSecureConfClient:
 
 __all__ = [
     "OpenSecureConfClient",
+    "SSEClient",
+    "SSEEventData",
+    "SSEStatistics",
     "OpenSecureConfError",
     "AuthenticationError",
     "ConfigurationNotFoundError",
     "ConfigurationExistsError",
     "ClusterError",
+    "SSEError",
+    "SSENotAvailableError",
 ]

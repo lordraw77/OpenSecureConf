@@ -380,5 +380,12 @@ export class OpenSecureConfService {
     }
     return result;
   }
+    /**
+   * Get SSE (Server-Sent Events) statistics
+   * @returns Observable with SSE statistics
+   */
+  getSseStats(): Observable<any> {
+    return from(this.client.getSseStats());
+  }
 
 }

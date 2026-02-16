@@ -26,6 +26,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
+import json
 
 from fastapi import FastAPI, Request,status
 from fastapi.exceptions import RequestValidationError
@@ -57,7 +58,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import all routers
-from routes import main_routes, config_routes, cluster_routes, stats_routes, backup_routes
+from routes import main_routes, config_routes, cluster_routes, stats_routes, backup_routes, sse_routes
 
 os.environ['prometheus_multiproc_dir'] = prometheus_multiproc_dir
 cleanup_multiprocess_metrics()
@@ -227,7 +228,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         body = await request.body()
         body_json = body.decode('utf-8') if body else '{}'
         # Cerca di estrarre la key se esiste nel JSON
-        import json
         try:
             body_dict = json.loads(body_json)
             key = body_dict.get('key', 'N/A')
@@ -269,7 +269,7 @@ app.include_router(config_routes.router)
 app.include_router(cluster_routes.router)
 app.include_router(stats_routes.router)
 app.include_router(backup_routes.router)
-
+app.include_router(sse_routes.router)
 
 # ========== APPLICATION ENTRY POINT ==========
 

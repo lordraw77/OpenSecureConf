@@ -47,6 +47,7 @@ from utils.helpers import update_config_count_metric
 from cluster_manager import ClusterMode
 import traceback
 import logging
+from core.sse_manager import sse_manager, SSEEventType
 
 # Configure the logger
 logger = logging.getLogger(__name__)
@@ -118,6 +119,16 @@ async def create_configuration(
                         config.key, config.value, config.category, config.environment, x_user_key
                     )
                 )
+
+    # 🔔 Broadcast SSE event
+        await sse_manager.broadcast_event(
+            event_type=SSEEventType.CREATED,
+            key=config.key,
+            environment=config.environment,
+            category=config.category,
+            data={"value":  config.value }
+        )
+
 
         return result
 
@@ -255,6 +266,14 @@ async def update_configuration(
                         key, config.value, config.category, config.environment, x_user_key
                     )
                 )
+        # 🔔 Broadcast SSE event
+        await sse_manager.broadcast_event(
+            event_type=SSEEventType.UPDATED,
+            key=key,
+            environment=environment,
+            category=config.category,
+            data={"value":  config.value }
+        )
 
         return result
 
@@ -319,7 +338,12 @@ async def delete_configuration(
                 asyncio.create_task(
                     cluster_manager.broadcast_delete(key, x_user_key)
                 )
-
+        # 🔔 Broadcast SSE event
+        await sse_manager.broadcast_event(
+            event_type=SSEEventType.DELETED,
+            key=key,
+            environment=environment
+        )
         return {"message": f"Configuration '{key}' deleted successfully"}
 
     except ValueError as e:

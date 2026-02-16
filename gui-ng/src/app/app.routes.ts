@@ -17,5 +17,13 @@ export const routes: Routes = [
     path: 'backup',
     loadComponent: () => import('./components/backup/backup.component').then(m => m.BackupComponent)
   },
+  {
+    path: 'sse-stats',  
+    loadComponent: () => import('./components/sse-stats/sse-stats.component').then(m => m.SseStatsComponent)
+  },
+  {
+    path: 'metrics',  
+    loadComponent: () => import('./components/metrics/metrics.component').then(m => m.MetricsComponent)
+  },
   { path: '**', redirectTo: '' }
 ];

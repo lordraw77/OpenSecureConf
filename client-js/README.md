@@ -1,17 +1,17 @@
 # OpenSecureConf TypeScript/JavaScript Client
 
-
 [![npm version](https://badge.fury.io/js/opensecureconf-client.svg)](https://www.npmjs.com/package/opensecureconf-client)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-
-
-A comprehensive TypeScript/JavaScript client library for OpenSecureConf - Encrypted configuration management with cluster support and HTTPS/SSL.
+A comprehensive TypeScript/JavaScript client library for OpenSecureConf - Encrypted configuration management with cluster support, HTTPS/SSL, and **real-time Server-Sent Events (SSE) notifications**.
 
 ## 🚀 Features
 
 - ✅ **Full TypeScript Support** - Complete type definitions
+- 📡 **Real-Time SSE Events** - Server-Sent Events for instant configuration change notifications
+- 🎯 **Granular Event Filtering** - Subscribe to events by key, environment, category, or combinations
+- 🔄 **Auto-Reconnection** - Automatic SSE reconnection with exponential backoff
 - 🔒 **HTTPS/SSL Support** - Production-ready with TLS
 - 🔐 **Self-Signed Certificates** - Option for development environments
 - 💾 **Backup & Restore** - Encrypted backup and import operations
@@ -41,10 +41,18 @@ yarn add opensecureconf-client
 pnpm add opensecureconf-client
 ```
 
+### With SSE Support (Node.js)
+
+For Node.js environments, install the optional `eventsource` package for SSE support:
+```bash
+npm install opensecureconf-client eventsource
+```
+
+**Note**: SSE works natively in browsers without additional dependencies.
+
 ## 🎯 Quick Start
 
 ### Basic HTTP Usage
-
 ```typescript
 import OpenSecureConfClient from 'opensecureconf-client';
 
@@ -86,8 +94,54 @@ await client.update(
 await client.delete('database', 'production');
 ```
 
-### Same Key in Different Environments
+### Real-Time Configuration Updates with SSE
+```typescript
+import OpenSecureConfClient from 'opensecureconf-client';
 
+const client = new OpenSecureConfClient({
+  baseUrl: 'http://localhost:9000',
+  userKey: 'my-secret-key-12345',
+  apiKey: 'optional-api-key',
+});
+
+// Create SSE client with event handler
+const sse = client.createSSEClient({
+  environment: 'production',
+  category: 'database',
+  onEvent: (event) => {
+    console.log(`📡 ${event.event_type}: ${event.key}@${event.environment}`);
+    
+    if (event.event_type === 'updated') {
+      // Reload configuration in your application
+      client.read(event.key!, event.environment!).then(config => {
+        console.log('New value:', config.value);
+        reloadAppConfig(config);
+      });
+    }
+  },
+  onError: (error) => {
+    console.error('SSE error:', error);
+  },
+  onConnected: (subscriptionId) => {
+    console.log('Connected with subscription:', subscriptionId);
+  },
+  autoReconnect: true,
+});
+
+// Connect and listen for events
+sse.connect();
+
+// Monitor statistics
+setInterval(() => {
+  const stats = sse.getStatistics();
+  console.log(`📊 Events: ${stats.eventsReceived}, Uptime: ${stats.uptimeSeconds}s`);
+}, 60000);
+
+// Later: disconnect
+// sse.disconnect();
+```
+
+### Same Key in Different Environments
 ```typescript
 // Create same key in production
 await client.create(
@@ -132,7 +186,6 @@ await client.delete('database', 'development');
 ```
 
 ### HTTPS with Valid Certificate (Production)
-
 ```typescript
 const client = new OpenSecureConfClient({
   baseUrl: 'https://config.example.com',
@@ -154,7 +207,6 @@ const config = await client.create(
 ```
 
 ### HTTPS with Self-Signed Certificate (Development)
-
 ```typescript
 const client = new OpenSecureConfClient({
   baseUrl: 'https://localhost:9443',
@@ -167,10 +219,347 @@ const info = await client.getInfo();
 console.log(info.service); // OpenSecureConf API
 ```
 
+## 📡 Real-Time SSE Events
+
+Subscribe to real-time configuration change notifications using Server-Sent Events (SSE).
+
+### Basic SSE Usage
+```typescript
+// Create SSE client with all event types
+const sse = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => {
+    switch (event.event_type) {
+      case 'connected':
+        console.log('🔗 Connected:', event.subscription_id);
+        break;
+      case 'created':
+        console.log('✨ Created:', event.key, '@', event.environment);
+        break;
+      case 'updated':
+        console.log('🔄 Updated:', event.key, '@', event.environment);
+        break;
+      case 'deleted':
+        console.log('🗑️  Deleted:', event.key, '@', event.environment);
+        break;
+      case 'sync':
+        console.log('🔄 Sync:', event.key, 'from', event.node_id);
+        break;
+    }
+  }
+});
+
+sse.connect();
+```
+
+### SSE Event Filtering
+```typescript
+// Subscribe to all events
+const sseAll = client.createSSEClient({
+  onEvent: (event) => console.log(event)
+});
+
+// Subscribe to production events only
+const sseProd = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => console.log(event)
+});
+
+// Subscribe to specific key in staging
+const sseKey = client.createSSEClient({
+  key: 'database',
+  environment: 'staging',
+  onEvent: (event) => console.log(event)
+});
+
+// Subscribe to all database configurations
+const sseCategory = client.createSSEClient({
+  category: 'database',
+  onEvent: (event) => console.log(event)
+});
+
+// Subscribe with multiple filters
+const sseMulti = client.createSSEClient({
+  key: 'api_token',
+  environment: 'production',
+  category: 'auth',
+  onEvent: (event) => console.log(event)
+});
+```
+
+### SSE Auto-Reconnection
+```typescript
+const sse = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => console.log(event),
+  
+  // Reconnection settings
+  autoReconnect: true,
+  maxReconnectAttempts: 10,    // -1 for infinite
+  reconnectDelay: 5000,         // Initial delay (ms)
+  reconnectBackoff: 2.0,        // Exponential backoff multiplier
+  maxReconnectDelay: 60000,     // Max delay (ms)
+});
+
+sse.connect();
+```
+
+### SSE Statistics and Monitoring
+```typescript
+const sse = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => console.log(event)
+});
+
+sse.connect();
+
+// Get statistics
+setInterval(() => {
+  const stats = sse.getStatistics();
+  
+  console.log('📊 SSE Statistics:');
+  console.log(`  Events received: ${stats.eventsReceived}`);
+  console.log(`  By type:`, stats.eventsByType);
+  console.log(`  Keep-alives: ${stats.keepalivesReceived}`);
+  console.log(`  Reconnections: ${stats.reconnections}`);
+  console.log(`  Errors: ${stats.errors}`);
+  console.log(`  Uptime: ${stats.uptimeSeconds}s`);
+  
+  if (stats.connectedAt) {
+    console.log(`  Connected at: ${stats.connectedAt.toISOString()}`);
+  }
+  
+  if (stats.lastEventAt) {
+    console.log(`  Last event: ${stats.lastEventAt.toISOString()}`);
+  }
+}, 60000);
+
+// Check connection status
+if (sse.getConnectionStatus()) {
+  console.log('✅ SSE connected');
+} else {
+  console.log('❌ SSE disconnected');
+}
+
+// Get subscription ID
+const subId = sse.getSubscriptionId();
+console.log('Subscription ID:', subId);
+```
+
+### Advanced SSE: Auto-Reload Configuration
+```typescript
+class ConfigurationManager {
+  private client: OpenSecureConfClient;
+  private configs: Map<string, any> = new Map();
+  private sse?: any;
+
+  constructor(client: OpenSecureConfClient, environment: string) {
+    this.client = client;
+    this.initializeSSE(environment);
+  }
+
+  private initializeSSE(environment: string) {
+    // Create SSE client for auto-reload
+    this.sse = this.client.createSSEClient({
+      environment,
+      onEvent: async (event) => {
+        if (event.event_type === 'updated' && event.key) {
+          // Reload updated configuration
+          const config = await this.client.read(event.key, event.environment!);
+          this.configs.set(event.key, config.value);
+          console.log(`✅ Reloaded: ${event.key}`);
+        } else if (event.event_type === 'created' && event.key) {
+          // Add new configuration
+          const config = await this.client.read(event.key, event.environment!);
+          this.configs.set(event.key, config.value);
+          console.log(`✅ Added: ${event.key}`);
+        } else if (event.event_type === 'deleted' && event.key) {
+          // Remove deleted configuration
+          this.configs.delete(event.key);
+          console.log(`✅ Removed: ${event.key}`);
+        }
+      },
+      onError: (error) => {
+        console.error('SSE error:', error);
+      },
+      autoReconnect: true,
+    });
+
+    this.sse.connect();
+  }
+
+  async loadAll(environment: string) {
+    // Load all configurations initially
+    const configs = await this.client.list({ environment });
+    configs.forEach(config => {
+      this.configs.set(config.key, config.value);
+    });
+    console.log(`Loaded ${configs.length} configurations`);
+  }
+
+  get(key: string): any {
+    return this.configs.get(key);
+  }
+
+  disconnect() {
+    if (this.sse) {
+      this.sse.disconnect();
+    }
+  }
+}
+
+// Usage
+const client = new OpenSecureConfClient({
+  baseUrl: 'http://localhost:9000',
+  userKey: 'my-key',
+});
+
+const manager = new ConfigurationManager(client, 'production');
+await manager.loadAll('production');
+
+// Configurations are automatically reloaded on changes
+const dbConfig = manager.get('database');
+console.log(dbConfig);
+```
+
+### Browser SSE Example
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenSecureConf SSE Demo</title>
+    <style>
+        .event { padding: 10px; margin: 5px; border-radius: 5px; }
+        .created { background-color: #d4edda; }
+        .updated { background-color: #fff3cd; }
+        .deleted { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Real-Time Configuration Updates</h1>
+    <div id="stats"></div>
+    <div id="events"></div>
+
+    <script type="module">
+        import OpenSecureConfClient from './dist/index.js';
+
+        const client = new OpenSecureConfClient({
+            baseUrl: 'http://localhost:9000',
+            userKey: 'my-secret-key-12345',
+        });
+
+        // Create SSE client
+        const sse = client.createSSEClient({
+            environment: 'production',
+            onEvent: (event) => {
+                // Add event to UI
+                const eventDiv = document.createElement('div');
+                eventDiv.className = `event ${event.event_type}`;
+                eventDiv.innerHTML = `
+                    <strong>${event.event_type.toUpperCase()}</strong>: 
+                    ${event.key}@${event.environment}
+                    <br><small>${new Date(event.timestamp).toLocaleString()}</small>
+                `;
+                document.getElementById('events').prepend(eventDiv);
+
+                // Keep only last 10 events
+                const events = document.getElementById('events');
+                while (events.children.length > 10) {
+                    events.removeChild(events.lastChild);
+                }
+            },
+            onConnected: (subscriptionId) => {
+                console.log('Connected:', subscriptionId);
+            }
+        });
+
+        sse.connect();
+
+        // Update statistics
+        setInterval(() => {
+            const stats = sse.getStatistics();
+            document.getElementById('stats').innerHTML = `
+                <strong>Statistics:</strong>
+                Events: ${stats.eventsReceived} |
+                Uptime: ${stats.uptimeSeconds}s |
+                Keep-alives: ${stats.keepalivesReceived}
+            `;
+        }, 1000);
+    </script>
+</body>
+</html>
+```
+
+### Node.js SSE Example
+```typescript
+import OpenSecureConfClient from 'opensecureconf-client';
+
+const client = new OpenSecureConfClient({
+  baseUrl: 'http://localhost:9000',
+  userKey: 'my-secret-key-12345',
+  apiKey: 'api-key-123',
+});
+
+// Create SSE client
+const sse = client.createSSEClient({
+  environment: 'production',
+  category: 'database',
+  onEvent: async (event) => {
+    console.log(`\n📡 ${event.event_type.toUpperCase()}`);
+    console.log(`   Key: ${event.key}@${event.environment}`);
+    console.log(`   Category: ${event.category}`);
+    console.log(`   Time: ${event.timestamp}`);
+
+    if (event.node_id) {
+      console.log(`   Node: ${event.node_id}`);
+    }
+
+    // Reload configuration on update
+    if (event.event_type === 'updated' && event.key) {
+      try {
+        const config = await client.read(event.key, event.environment!);
+        console.log(`   New value:`, config.value);
+      } catch (error) {
+        console.error(`   Failed to reload:`, error);
+      }
+    }
+  },
+  onError: (error) => {
+    console.error('❌ SSE error:', error.message);
+  },
+  onConnected: (subscriptionId) => {
+    console.log(`\n✅ Connected to SSE stream`);
+    console.log(`   Subscription ID: ${subscriptionId}`);
+  },
+  autoReconnect: true,
+  maxReconnectAttempts: 10,
+});
+
+// Connect
+sse.connect();
+console.log('🔌 Connecting to SSE stream...');
+
+// Monitor statistics
+setInterval(() => {
+  const stats = sse.getStatistics();
+  console.log(`\n📊 Statistics:`);
+  console.log(`   Events: ${stats.eventsReceived}`);
+  console.log(`   By type:`, stats.eventsByType);
+  console.log(`   Uptime: ${stats.uptimeSeconds}s`);
+  console.log(`   Reconnections: ${stats.reconnections}`);
+}, 60000);
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n\n👋 Shutting down...');
+  sse.disconnect();
+  process.exit(0);
+});
+```
+
 ## 💾 Backup & Restore
 
 ### Create Backup
-
 ```typescript
 // Backup all configurations
 const backup = await client.createBackup('my-backup-password-123');
@@ -196,7 +585,6 @@ const backup = await client.createBackup('password123', {
 ```
 
 ### Import Backup
-
 ```typescript
 // Import without overwriting existing configs
 const result = await client.importBackup(
@@ -217,12 +605,11 @@ console.log(`Imported: ${resultOverwrite.imported_count}`);
 ```
 
 ### Backup to File (Node.js only)
-
 ```typescript
 // Save backup to file
 await client.backupToFile(
   'my-backup-password-123',
-  './backups/full-backup-2026-02-05.json'
+  './backups/full-backup-2026-02-15.json'
 );
 
 // Backup production environment to file
@@ -235,7 +622,7 @@ await client.backupToFile(
 // Import from file
 const importResult = await client.importFromFile(
   'my-backup-password-123',
-  './backups/full-backup-2026-02-05.json',
+  './backups/full-backup-2026-02-15.json',
   false // don't overwrite
 );
 console.log(`Restored ${importResult.imported_count} configurations`);
@@ -244,7 +631,6 @@ console.log(`Restored ${importResult.imported_count} configurations`);
 ## 📖 API Reference
 
 ### Constructor Options
-
 ```typescript
 interface OpenSecureConfOptions {
   baseUrl: string;              // API server URL (http:// or https://)
@@ -255,10 +641,7 @@ interface OpenSecureConfOptions {
 }
 ```
 
-### Methods
-
-#### Configuration Operations
-
+### Configuration Methods
 ```typescript
 // Create with environment (REQUIRED) and optional category
 await client.create(
@@ -311,8 +694,83 @@ await client.listCategories(): Promise<string[]>
 await client.listEnvironments(): Promise<string[]>
 ```
 
-#### Backup & Import Operations
+### SSE Methods (New!)
+```typescript
+// Create SSE client
+client.createSSEClient(
+  options?: SSEOptions
+): SSEClient
 
+interface SSEOptions {
+  key?: string;                    // Filter by key
+  environment?: string;            // Filter by environment
+  category?: string;               // Filter by category
+  onEvent?: (event: SSEEventData) => void | Promise<void>;
+  onError?: (error: Error) => void;
+  onConnected?: (subscriptionId: string) => void;
+  autoReconnect?: boolean;         // Default: true
+  maxReconnectAttempts?: number;   // Default: -1 (infinite)
+  reconnectDelay?: number;         // Default: 5000ms
+  reconnectBackoff?: number;       // Default: 2.0
+  maxReconnectDelay?: number;      // Default: 60000ms
+}
+
+// SSEClient instance methods
+sse.connect(): void
+sse.disconnect(): void
+sse.getConnectionStatus(): boolean
+sse.getSubscriptionId(): string | undefined
+sse.getStatistics(): SSEStatistics
+sse.resetStatistics(): void
+
+// Get SSE server statistics
+await client.getSSEStats(): Promise<any>
+
+// Get active SSE subscriptions
+await client.getSSESubscriptions(): Promise<any[]>
+
+// Check SSE service health
+await client.getSSEHealth(): Promise<{
+  status: string;
+  active_subscriptions: number;
+  total_events_sent: number;
+}>
+```
+
+### SSE Event Data
+```typescript
+interface SSEEventData {
+  event_type: 'connected' | 'created' | 'updated' | 'deleted' | 'sync';
+  key?: string;
+  environment?: string;
+  category?: string;
+  timestamp?: string;
+  node_id?: string;
+  data?: Record<string, any>;
+  subscription_id?: string;
+  filters?: {
+    key?: string;
+    environment?: string;
+    category?: string;
+  };
+}
+```
+
+### SSE Statistics
+```typescript
+interface SSEStatistics {
+  eventsReceived: number;
+  eventsByType: Record<SSEEventType, number>;
+  keepalivesReceived: number;
+  reconnections: number;
+  connectedAt?: Date;
+  lastEventAt?: Date;
+  errors: number;
+  uptimeSeconds: number;
+}
+```
+
+### Backup & Import Methods
 ```typescript
 // Create encrypted backup
 await client.createBackup(
@@ -342,8 +800,7 @@ await client.importFromFile(
 ): Promise<ImportResponse>
 ```
 
-#### Batch Operations
-
+### Batch Operations
 ```typescript
 // Bulk create (environment REQUIRED for each config)
 await client.bulkCreate(
@@ -372,8 +829,7 @@ await client.bulkDelete(
 }>
 ```
 
-#### Cluster & Health
-
+### Cluster & Health
 ```typescript
 // Get service info
 await client.getInfo(): Promise<Record<string, any>>
@@ -393,7 +849,6 @@ await client.getMetrics(): Promise<string>
 ### Production (Valid Certificates)
 
 For production environments with valid SSL certificates from Let's Encrypt or a trusted CA:
-
 ```typescript
 const client = new OpenSecureConfClient({
   baseUrl: 'https://config.example.com',
@@ -406,7 +861,6 @@ const client = new OpenSecureConfClient({
 ### Development (Self-Signed Certificates)
 
 For development with self-signed certificates:
-
 ```typescript
 const client = new OpenSecureConfClient({
   baseUrl: 'https://localhost:9443',
@@ -417,42 +871,13 @@ const client = new OpenSecureConfClient({
 
 **⚠️ Security Warning**: Never use `rejectUnauthorized: false` in production! This disables SSL certificate validation and makes your connection vulnerable to man-in-the-middle attacks.
 
-### Node.js HTTPS Agent
-
-When running in Node.js, the client automatically creates an HTTPS agent with the appropriate SSL settings:
-
-```typescript
-// In Node.js, HTTPS agent is automatically configured
-const client = new OpenSecureConfClient({
-  baseUrl: 'https://localhost:9443',
-  userKey: 'my-secret-key-12345',
-  rejectUnauthorized: false,
-});
-
-// Agent is used for all HTTPS requests automatically
-await client.getInfo();
-```
-
-### Browser Usage
-
-In browser environments, the native `fetch` API handles HTTPS automatically. Certificate validation follows browser security policies:
-
-```typescript
-// Works in browsers with valid certificates
-const client = new OpenSecureConfClient({
-  baseUrl: 'https://config.example.com',
-  userKey: 'my-secret-key-12345',
-});
-```
-
 ## 📚 Usage Examples
 
-### Complete Workflow with Backup
-
+### Complete Workflow with SSE and Backup
 ```typescript
 import OpenSecureConfClient, { OpenSecureConfError } from 'opensecureconf-client';
 
-async function workflow() {
+async function completeWorkflow() {
   const client = new OpenSecureConfClient({
     baseUrl: 'https://localhost:9443',
     userKey: 'my-secure-encryption-key',
@@ -465,7 +890,19 @@ async function workflow() {
     const health = await client.healthCheck();
     console.log(`Status: ${health.status}`);
 
-    // 2. Create configurations with environments
+    // 2. Setup SSE for real-time updates
+    const sse = client.createSSEClient({
+      environment: 'production',
+      onEvent: (event) => {
+        console.log(`📡 ${event.event_type}: ${event.key}@${event.environment}`);
+      },
+      onConnected: (subId) => {
+        console.log(`🔗 SSE Connected: ${subId}`);
+      },
+    });
+    sse.connect();
+
+    // 3. Create configurations with environments
     await client.create(
       'database',
       { host: 'postgres.local', port: 5432 },
@@ -473,7 +910,7 @@ async function workflow() {
       'config'
     );
 
-    // 3. Batch create with environments
+    // 4. Batch create with environments
     await client.bulkCreate([
       {
         key: 'redis',
@@ -489,38 +926,40 @@ async function workflow() {
       },
     ], true);
 
-    // 4. List all production configs
+    // 5. List all production configs
     const prodConfigs = await client.list({ environment: 'production' });
     console.log(`Production configs: ${prodConfigs.length}`);
 
-    // 5. Create backup before updates
+    // 6. Create backup before updates
     const backup = await client.createBackup('backup-password-123', {
       environment: 'production'
     });
     console.log(`Backed up ${backup.total_configs} configurations`);
 
-    // 6. Update configuration
+    // 7. Update configuration (will trigger SSE event)
     await client.update(
       'database',
       'production',
       { host: 'postgres.local', port: 5432, ssl: true }
     );
 
-    // 7. Save backup to file (Node.js)
+    // 8. Wait for SSE event
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // 9. Get SSE statistics
+    const sseStats = sse.getStatistics();
+    console.log('SSE Stats:', sseStats);
+
+    // 10. Save backup to file (Node.js)
     await client.backupToFile(
       'backup-password-123',
       './backups/prod-backup.json',
       { environment: 'production' }
     );
 
-    // 8. Restore from backup if needed
-    // const restored = await client.importFromFile(
-    //   'backup-password-123',
-    //   './backups/prod-backup.json',
-    //   true
-    // );
-
-    // 9. Cleanup (specify environment for each delete)
+    // 11. Cleanup
+    sse.disconnect();
+    
     await client.bulkDelete([
       { key: 'database', environment: 'production' },
       { key: 'redis', environment: 'production' },
@@ -536,7 +975,6 @@ async function workflow() {
 ```
 
 ### Multi-Environment Configuration Management
-
 ```typescript
 // Create same key with different values across environments
 const environments = ['development', 'staging', 'production'];
@@ -565,64 +1003,43 @@ for (const env of environments) {
   await client.create('debug', configs[env].debug, env, 'settings');
 }
 
+// Setup SSE to monitor each environment separately
+const sseProd = client.createSSEClient({
+  environment: 'production',
+  onEvent: (e) => console.log(`[PROD] ${e.event_type}: ${e.key}`)
+});
+
+const sseStaging = client.createSSEClient({
+  environment: 'staging',
+  onEvent: (e) => console.log(`[STAGING] ${e.event_type}: ${e.key}`)
+});
+
+sseProd.connect();
+sseStaging.connect();
+
 // Read configuration from specific environment
 const prodApiUrl = await client.read('api_url', 'production');
 console.log(prodApiUrl.value); // 'https://api.example.com'
 
-const devApiUrl = await client.read('api_url', 'development');
-console.log(devApiUrl.value); // 'http://localhost:3000'
-
-// List all environments
-const allEnvs = await client.listEnvironments();
-console.log(allEnvs); // ['development', 'production', 'staging']
-
-// List configs for specific environment
-const prodConfigs = await client.list({ environment: 'production' });
-console.log(prodConfigs.length); // 3
-
-// Update only staging environment
+// Update only staging environment (triggers staging SSE event only)
 await client.update('api_url', 'staging', 'https://api-v2.staging.example.com');
 
-// Delete from specific environment
-await client.delete('debug', 'development');
-// 'staging' and 'production' debug configs remain untouched
+// Cleanup
+sseProd.disconnect();
+sseStaging.disconnect();
 ```
 
-### Environment & Category Management
-
+### Disaster Recovery Workflow with SSE Monitoring
 ```typescript
-// List all environments
-const environments = await client.listEnvironments();
-console.log(environments); // ['development', 'production', 'staging']
-
-// List all categories
-const categories = await client.listCategories();
-console.log(categories); // ['cache', 'config', 'settings']
-
-// List configs by environment
-const prodConfigs = await client.list({ environment: 'production' });
-
-// List configs by category
-const cacheConfigs = await client.list({ category: 'cache' });
-
-// List configs by both
-const prodCacheConfigs = await client.list({
-  category: 'cache',
-  environment: 'production'
+// Setup SSE monitoring for backup operations
+const sseMonitor = client.createSSEClient({
+  onEvent: (event) => {
+    console.log(`📊 Change detected: ${event.event_type} - ${event.key}`);
+    // Log to audit system
+  }
 });
+sseMonitor.connect();
 
-// Count configs by filters
-const prodCount = await client.count({ environment: 'production' });
-console.log(`Production configs: ${prodCount}`);
-
-// Check if key exists in specific environment
-const existsInProd = await client.exists('database', 'production');
-const existsInDev = await client.exists('database', 'development');
-```
-
-### Disaster Recovery Workflow
-
-```typescript
 // Daily backup routine
 async function dailyBackup() {
   const timestamp = new Date().toISOString().split('T')[0];
@@ -667,8 +1084,7 @@ async function restoreFromBackup(backupFile: string, overwrite = false) {
 }
 ```
 
-### Error Handling
-
+### Error Handling with SSE
 ```typescript
 try {
   const config = await client.read('nonexistent', 'production');
@@ -692,91 +1108,26 @@ try {
     }
   }
 }
-```
 
-### Cluster Operations
-
-```typescript
-// Check cluster status
-const status = await client.getClusterStatus();
-if (status.enabled) {
-  console.log(`Cluster mode: ${status.mode}`);
-  console.log(`Node ID: ${status.node_id}`);
-  console.log(`Nodes: ${status.healthy_nodes}/${status.total_nodes}`);
-}
-
-// Get Prometheus metrics
-const metrics = await client.getMetrics();
-console.log(metrics);
-```
-
-## 🛠️ Advanced Usage
-
-### Custom Timeout
-
-```typescript
-const client = new OpenSecureConfClient({
-  baseUrl: 'https://config.example.com',
-  userKey: 'my-secret-key-12345',
-  timeout: 5000, // 5 seconds
+// SSE error handling
+const sse = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => console.log(event),
+  onError: (error) => {
+    console.error('SSE error:', error);
+    // Implement custom error handling
+    if (error.message.includes('EventSource')) {
+      console.error('EventSource not available. Install: npm install eventsource');
+    }
+  },
+  autoReconnect: true,
+  maxReconnectAttempts: 5,
 });
-```
-
-### Batch Operations with Error Handling
-
-```typescript
-const result = await client.bulkDelete(
-  [
-    { key: 'config1', environment: 'production' },
-    { key: 'config2', environment: 'production' },
-    { key: 'config3', environment: 'staging' },
-  ],
-  true // ignoreErrors
-);
-
-console.log(`Deleted: ${result.deleted.length}`);
-console.log(`Failed: ${result.failed.length}`);
-
-for (const failure of result.failed) {
-  console.error(
-    `Failed to delete ${failure.key} (${failure.environment}): ${failure.error}`
-  );
-}
-```
-
-### Type-Safe Value Types
-
-```typescript
-// Object value
-await client.create('database', {
-  host: 'localhost',
-  port: 5432
-}, 'production');
-
-// String value
-await client.create('api_token', 'secret-token-123', 'production');
-
-// Number value
-await client.create('max_retries', 3, 'production');
-
-// Boolean value
-await client.create('debug_enabled', false, 'production');
-
-// Array value
-await client.create('allowed_ips', ['192.168.1.1', '10.0.0.1'], 'production');
-
-// Read preserves types
-const dbConfig = await client.read('database', 'production');
-console.log(dbConfig.value.port); // number: 5432
-
-const token = await client.read('api_token', 'production');
-console.log(token.value); // string: 'secret-token-123'
 ```
 
 ## 🔍 TypeScript Support
 
 Full TypeScript definitions included:
-
 ```typescript
 import OpenSecureConfClient, {
   OpenSecureConfOptions,
@@ -786,6 +1137,12 @@ import OpenSecureConfClient, {
   BackupResponse,
   ImportResponse,
   OpenSecureConfError,
+  SSEClient,
+  SSEOptions,
+  SSEEventData,
+  SSEEventType,
+  SSEStatistics,
+  SSEError,
 } from 'opensecureconf-client';
 
 // All types are fully typed
@@ -801,10 +1158,15 @@ const client = new OpenSecureConfClient(options);
 const config: ConfigEntry = await client.read('key', 'production');
 const status: ClusterStatus = await client.getClusterStatus();
 const backup: BackupResponse = await client.createBackup('password123');
-const importResult: ImportResponse = await client.importBackup(
-  backup.backup_data,
-  'password123'
-);
+
+// SSE types
+const sseOptions: SSEOptions = {
+  environment: 'production',
+  onEvent: (event: SSEEventData) => console.log(event),
+};
+
+const sse: SSEClient = client.createSSEClient(sseOptions);
+const stats: SSEStatistics = sse.getStatistics();
 ```
 
 ## 🔐 Security Best Practices
@@ -822,6 +1184,9 @@ const importResult: ImportResponse = await client.importBackup(
 - Rotate backup passwords regularly
 - Test backup/restore procedures periodically
 - Use separate configurations for each environment
+- Monitor SSE connections for anomalies
+- Implement proper error handling for SSE events
+- Disconnect SSE clients when no longer needed
 
 ### ❌ Don'ts
 
@@ -834,15 +1199,22 @@ const importResult: ImportResponse = await client.importBackup(
 - **Never** use weak backup passwords
 - **Never** share backup passwords insecurely
 - **Never** mix production and development configurations
+- **Never** leave SSE connections open indefinitely without monitoring
+- **Never** ignore SSE error events
 
 ### Environment Variables
-
 ```typescript
 const client = new OpenSecureConfClient({
   baseUrl: process.env.OSC_BASE_URL!,
   userKey: process.env.OSC_USER_KEY!,
   apiKey: process.env.OSC_API_KEY,
   rejectUnauthorized: process.env.NODE_ENV === 'production',
+});
+
+// SSE with environment-specific filters
+const sse = client.createSSEClient({
+  environment: process.env.APP_ENV!,
+  onEvent: (event) => console.log(event),
 });
 
 // Backup with environment variable password
@@ -854,22 +1226,22 @@ const backup = await client.createBackup(
 ## 🌍 Browser vs Node.js
 
 ### Node.js
-
 ```typescript
 // Automatic HTTPS agent setup
 // Supports rejectUnauthorized option
 // Full control over SSL/TLS
 // File-based backup operations (backupToFile, importFromFile)
+// SSE via eventsource package (install: npm install eventsource)
 ```
 
 ### Browser
-
 ```typescript
 // Uses native fetch API
 // SSL validation by browser
 // rejectUnauthorized ignored (browser controls SSL)
 // Works with CORS-enabled servers
 // No file-based operations (use createBackup/importBackup with manual file handling)
+// SSE via native EventSource API (built-in)
 ```
 
 ## 📊 Error Codes
@@ -893,6 +1265,7 @@ const backup = await client.createBackup(
 - **Docker Hub**: [lordraw/open-secureconfiguration](https://hub.docker.com/r/lordraw/open-secureconfiguration)
 - **PyPI Client**: [opensecureconf-client](https://pypi.org/project/opensecureconf-client/)
 - **Documentation**: [GitHub README](https://github.com/lordraw77/OpenSecureConf/blob/main/README.md)
+- **SSE Guide**: [SSE Documentation](https://github.com/lordraw77/OpenSecureConf/blob/main/docs/SSE_GUIDE.md)
 
 ## 📄 License
 
@@ -904,9 +1277,23 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 ## 📝 Changelog
 
+### v3.1.0 (Latest - SSE Support)
+- 🎉 **NEW**: Real-time Server-Sent Events (SSE) support
+- ✨ **NEW**: `createSSEClient()` method for event subscriptions
+- 🎯 **NEW**: Granular event filtering (key, environment, category)
+- 🔄 **NEW**: Automatic SSE reconnection with exponential backoff
+- 📊 **NEW**: Comprehensive SSE statistics and monitoring
+- 💓 **NEW**: Keep-alive management for stable connections
+- 🌐 **NEW**: Universal SSE support (Browser native, Node.js with eventsource)
+- 📡 **NEW**: Event types: connected, created, updated, deleted, sync
+- 🔌 **NEW**: Connection status tracking and subscription IDs
+- 🛠️ **NEW**: SSE error handling and callbacks
+- 📚 Enhanced documentation with SSE examples for browser and Node.js
+- 🎨 Added TypeScript types for SSE (SSEClient, SSEEventData, SSEStatistics)
+
 ### v3.0.0 (Breaking Changes)
 - 🚨 **BREAKING**: Environment is now **REQUIRED** for all configuration operations
-- 🚨 **BREAKING**: `create()` signature changed - environment is now second parameter after value
+- 🚨 **BREAKING**: `create()` signature changed - environment is now third parameter after value
 - 🚨 **BREAKING**: `read()` requires environment parameter
 - 🚨 **BREAKING**: `update()` requires environment parameter (environment cannot be changed)
 - 🚨 **BREAKING**: `delete()` requires environment parameter
@@ -951,7 +1338,6 @@ Contributions are welcome! Please open an issue or submit a pull request.
 ## 🔄 Migration Guide from v2.x to v3.0
 
 ### Before (v2.x)
-
 ```typescript
 // Create with optional environment
 await client.create('database', { host: 'localhost' }, {
@@ -972,8 +1358,7 @@ await client.bulkRead(['key1', 'key2']);
 await client.bulkDelete(['key1', 'key2']);
 ```
 
-### After (v3.0)
-
+### After (v3.0+)
 ```typescript
 // Create with REQUIRED environment
 await client.create(
@@ -1002,13 +1387,20 @@ await client.bulkDelete([
   { key: 'key1', environment: 'production' },
   { key: 'key2', environment: 'staging' },
 ]);
+
+// NEW in v3.1: SSE support
+const sse = client.createSSEClient({
+  environment: 'production',
+  onEvent: (event) => console.log(event)
+});
+sse.connect();
 ```
 
-***
+---
 
-**OpenSecureConf TypeScript Client** - Secure configuration management made simple.
+**OpenSecureConf TypeScript Client** - Secure configuration management with real-time notifications.
 
-**Version**: 3.0.0  
+**Version**: 3.1.0  
 **Author**: Apioli <alessandro.pioli+apioli-npm@gmail.com>  
 **Repository**: [GitHub](https://github.com/lordraw77/OpenSecureConf/tree/main/client-js)  
 **Support**: [GitHub Issues](https://github.com/lordraw77/OpenSecureConf/issues)

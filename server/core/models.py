@@ -43,9 +43,11 @@ Usage:
     response = ConfigResponse(**db_record)
 """
 
-from typing import Optional, Literal, Union
+from typing import Optional, Literal, Union, Set
 from pydantic import BaseModel, Field
-
+from enum import Enum
+from dataclasses import dataclass, field
+from datetime import datetime
 
 # =============================================================================
 # CONFIGURATION MODELS
@@ -663,3 +665,228 @@ class BackupResponse(BaseModel):
     total_keys: int = Field(description="Number of keys in backup")
     backup_timestamp: str = Field(description="Backup creation timestamp (ISO 8601 UTC)")
     backup_id: str = Field(description="Unique backup identifier")
+# server/core/models.py
+
+
+
+
+class SSEEventType(str, Enum):
+    """
+    Server-Sent Events (SSE) event types.
+    
+    Defines the types of events that can be broadcast to SSE subscribers
+    when configuration changes occur in the system or cluster.
+    
+    Event Types:
+        CREATED: A new configuration entry was created
+        UPDATED: An existing configuration entry was modified
+        DELETED: A configuration entry was removed
+        SYNC: Cluster synchronization event (replicas being synced)
+    
+    Usage:
+        Events are broadcast to subscribed clients based on their filter
+        criteria (key, environment, category). Clients can listen for
+        specific event types to react to configuration changes.
+    
+    Example:
+```python
+        # Broadcast an update event
+        await sse_manager.broadcast_event(
+            event_type=SSEEventType.UPDATED,
+            key="database",
+            environment="production"
+        )
+```
+    """
+    CREATED = "created"
+    UPDATED = "updated"
+    DELETED = "deleted"
+    SYNC = "sync"
+
+
+@dataclass
+class SSESubscription:
+    """
+    Represents an active SSE subscription with filter criteria.
+    
+    Each subscription has a unique ID and optional filters that determine
+    which events it should receive. A subscription receives an event only
+    if all its filters match the event attributes.
+    
+    Attributes:
+        subscription_id: Unique identifier for this subscription (UUID format)
+        key: Optional filter - receive only events for this configuration key
+        environment: Optional filter - receive only events for this environment
+        category: Optional filter - receive only events for this category
+    
+    Filter Logic:
+        - If a filter is None, it matches any value (wildcard)
+        - If a filter has a value, it must match exactly
+        - Multiple filters are combined with AND logic
+        - A subscription with no filters receives all events
+    
+    Examples:
+```python
+        # Subscribe to all production events
+        sub = SSESubscription(
+            subscription_id="abc123",
+            environment="production"
+        )
+        
+        # Subscribe to specific key in staging
+        sub = SSESubscription(
+            subscription_id="def456",
+            key="database",
+            environment="staging"
+        )
+        
+        # Subscribe to all database configurations
+        sub = SSESubscription(
+            subscription_id="ghi789",
+            category="database"
+        )
+        
+        # Subscribe to everything (wildcard)
+        sub = SSESubscription(subscription_id="jkl012")
+```
+    """
+    subscription_id: str
+    key: Optional[str] = None
+    environment: Optional[str] = None
+    category: Optional[str] = None
+    
+    def matches(self, key: str, environment: str, category: Optional[str]) -> bool:
+        """
+        Check if an event matches this subscription's filter criteria.
+        
+        An event matches if all non-None filters match the event attributes.
+        None filters act as wildcards and match any value.
+        
+        Args:
+            key: Configuration key from the event
+            environment: Environment from the event
+            category: Optional category from the event
+        
+        Returns:
+            True if the event matches all filters, False otherwise
+        
+        Examples:
+```python
+            # Subscription: key="database", environment="production"
+            sub = SSESubscription("id1", key="database", environment="production")
+            
+            # Matches
+            sub.matches("database", "production", "config")  # True
+            
+            # Does not match (wrong key)
+            sub.matches("api_token", "production", "config")  # False
+            
+            # Does not match (wrong environment)
+            sub.matches("database", "staging", "config")  # False
+            
+            # Wildcard subscription matches everything
+            wildcard = SSESubscription("id2")
+            wildcard.matches("any_key", "any_env", "any_cat")  # True
+```
+        """
+        if self.key and self.key != key:
+            return False
+        if self.environment and self.environment != environment:
+            return False
+        if self.category and self.category != category:
+            return False
+        return True
+
+
+class SSEEvent(BaseModel):
+    """
+    Server-Sent Event payload sent to subscribed clients.
+    
+    Represents a configuration change event with all relevant context
+    including what changed, where it changed, when it changed, and
+    optional additional data.
+    
+    Attributes:
+        event_type: Type of event (CREATED, UPDATED, DELETED, SYNC)
+        key: Configuration key that was affected
+        environment: Environment where the change occurred
+        category: Optional category of the configuration
+        timestamp: When the event occurred (ISO 8601 format)
+        node_id: Optional cluster node that originated the change
+        data: Optional dictionary with additional event-specific data
+    
+    Serialization:
+        Events are automatically serialized to JSON for SSE transmission.
+        The timestamp is converted to ISO 8601 string format.
+    
+    Event Data Examples:
+        - CREATED: May include initial value type or metadata
+        - UPDATED: May include list of changed fields
+        - DELETED: Usually no additional data
+        - SYNC: May include source node and sync status
+    
+    Example Usage:
+```python
+        # Create an update event
+        event = SSEEvent(
+            event_type=SSEEventType.UPDATED,
+            key="database_url",
+            environment="production",
+            category="database",
+            timestamp=datetime.now(),
+            node_id="node1:9000",
+            data={"changed_fields": ["host", "port"]}
+        )
+        
+        # Serialize for transmission
+        json_data = event.model_dump_json()
+        
+        # Client receives:
+        # {
+        #     "event_type": "updated",
+        #     "key": "database_url",
+        #     "environment": "production",
+        #     "category": "database",
+        #     "timestamp": "2026-02-15T10:30:00Z",
+        #     "node_id": "node1:9000",
+        #     "data": {"changed_fields": ["host", "port"]}
+        # }
+```
+    
+    Client-Side Handling:
+```javascript
+        eventSource.addEventListener('updated', (event) => {
+            const data = JSON.parse(event.data);
+            console.log(`Config ${data.key} updated in ${data.environment}`);
+            console.log(`Changed at: ${data.timestamp}`);
+        });
+```
+    """
+    event_type: SSEEventType = Field(
+        ...,
+        description="Type of configuration change event"
+    )
+    key: str = Field(
+        ...,
+        description="Configuration key that was affected by the change"
+    )
+    environment: str = Field(
+        ...,
+        description="Environment where the change occurred (e.g., production, staging)"
+    )
+    category: Optional[str] = Field(
+        None,
+        description="Optional category for grouping related configurations"
+    )
+    timestamp: datetime = Field(
+        ...,
+        description="When the event occurred (UTC timestamp)"
+    )
+    node_id: Optional[str] = Field(
+        None,
+        description="Cluster node ID that originated the change (format: host:port)"
+    )
+    data: Optional[dict] = Field(
+        None,
+        description="Optional additional event-specific data or metadata"
+    )

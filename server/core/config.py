@@ -83,7 +83,7 @@ OSC_CLUSTER_SYNC_INTERVAL = int(os.getenv("OSC_CLUSTER_SYNC_INTERVAL", "30"))  #
 prometheus_multiproc_dir = os.getenv("prometheus_multiproc_dir", ".prometheus_multiproc")
 
 # === APPLICATION METADATA ===
-APP_VERSION = "3.0.0"  # Follows semantic versioning: MAJOR.MINOR.PATCH
+APP_VERSION = "3.1.0"  # Follows semantic versioning: MAJOR.MINOR.PATCH
 APP_TITLE = "OpenSecureConf API"  # Application title - displayed in API documentation
 APP_DESCRIPTION = """
 REST API for encrypted configuration management with clustering support and Prometheus metrics.

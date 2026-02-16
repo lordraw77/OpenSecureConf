@@ -1,5 +1,0 @@
-# OpenSecureConf Web GUI Requirements
-
-streamlit>=1.30.0
-requests>=2.28.0
-pandas>=2.0.0

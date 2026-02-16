@@ -212,7 +212,20 @@ export class OpenSecureConfClient {
   async healthCheck(): Promise<{ status: string; node_id: string }> {
     return this.request('GET', '/cluster/health');
   }
-
+  /**
+   * Get SSE (Server-Sent Events) statistics
+   * Requires X-API-Key header
+   * 
+   * @returns SSE statistics including subscriptions, events, and health metrics
+   * 
+   * @example
+   * const stats = await client.getSseStats();
+   * console.log(`Active connections: ${stats.subscriptions.active}`);
+   * console.log(`Total events sent: ${stats.events.total_sent}`);
+   */
+  async getSseStats(): Promise<any> {
+    return this.request('GET', '/sse/stats');
+  }
   async getMetrics(): Promise<string> {
     const url = `${this.baseUrl}/metrics`;
     const headers: Record<string, string> = {};
