@@ -60,7 +60,7 @@ interface MetricGroup {
           <div>
             <h1>
               <i class="pi pi-chart-bar"></i>
-              Metriche 
+              Metriche
             </h1>
             <p>Monitoring delle performance e statistiche del sistema</p>
           </div>
@@ -209,8 +209,6 @@ interface MetricGroup {
       margin: 0 auto;
       animation: fadeInUp 0.5s ease-out;
     }
-
-
 
     .page-header {
       margin-bottom: 2rem;
@@ -586,6 +584,7 @@ export class MetricsComponent implements OnInit, OnDestroy {
   autoRefreshEnabled = false;
   metricGroups: MetricGroup[] = [];
   private refreshSubscription: any;
+  private collapsedState: Map<string, boolean> = new Map();   
 
   constructor(private oscService: OpenSecureConfService) {}
 
@@ -730,7 +729,20 @@ export class MetricsComponent implements OnInit, OnDestroy {
       }
     ];
 
-    this.metricGroups = groups.filter(g => g.metrics.length > 0);
+    // Preserva lo stato collapsed dei gruppi esistenti
+    const filteredGroups = groups.filter(g => g.metrics.length > 0);
+    
+    if (this.metricGroups.length > 0) {
+      // Se ci sono già gruppi, preserva il loro stato collapsed
+      filteredGroups.forEach(newGroup => {
+        const existingGroup = this.metricGroups.find(g => g.title === newGroup.title);
+        if (existingGroup) {
+          newGroup.collapsed = existingGroup.collapsed;
+        }
+      });
+    }
+
+    this.metricGroups = filteredGroups;
   }
 
   getLabels(values: Array<{ labels: Record<string, string> }>): string[] {

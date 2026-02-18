@@ -25,5 +25,9 @@ export const routes: Routes = [
     path: 'metrics',  
     loadComponent: () => import('./components/metrics/metrics.component').then(m => m.MetricsComponent)
   },
+  {
+    path: 'charts',
+    loadComponent: () => import('./components/charts/charts.component').then(m => m.ChartsComponent)
+  },
   { path: '**', redirectTo: '' }
 ];
