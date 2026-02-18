@@ -198,7 +198,10 @@ interface NodeDistribution {
                       <div 
                         class="performance-fill"
                         [style.width.%]="getPerformancePercentage(node.keys_count)"
-                        [style.background-color]="getPerformanceColor(node.keys_count)">
+                        [style.background-color]="getPerformanceColor(node.keys_count)"> 
+                        <span class="performance-label">
+                          {{ getPerformancePercentage(node.keys_count) | number:'1.0-0' }}%
+                        </span>
                       </div>
                     </div>
                   </td>
@@ -376,12 +379,34 @@ interface NodeDistribution {
       color: #667eea;
     }
 
+    // .performance-bar {
+    //   width: 100%;
+    //   height: 24px;
+    //   background: var(--bg-secondary);
+    //   border-radius: 12px;
+    //   overflow: hidden;
+    // }
     .performance-bar {
+      position: relative;
       width: 100%;
       height: 24px;
       background: var(--bg-secondary);
       border-radius: 12px;
       overflow: hidden;
+    }
+    .performance-label {
+      position: absolute;        
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.75rem;
+      font-weight: 700;
+      //color: #ffffff;
+      //text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);  
+      pointer-events: none;
+      white-space: nowrap;
+      color: #000000;           
+      text-shadow: none;        
     }
 
     .performance-fill {
@@ -459,9 +484,16 @@ export class ClusterStatusComponent implements OnInit {
     return this.clusterDistribution.nodes_distribution.filter(n => n.is_healthy).length;
   }
 
+  // getTotalKeys(): number {
+  //   if (!this.clusterDistribution) return 0;
+  //   return this.clusterDistribution.nodes_distribution.reduce((sum, node) => sum + node.keys_count, 0);
+  // }
   getTotalKeys(): number {
     if (!this.clusterDistribution) return 0;
-    return this.clusterDistribution.nodes_distribution.reduce((sum, node) => sum + node.keys_count, 0);
+    const nodes = this.clusterDistribution.nodes_distribution;
+    if (nodes.length === 0) return 0;
+    const total = nodes.reduce((sum, node) => sum + node.keys_count, 0);
+    return Math.round(total / nodes.length);
   }
 
   getPerformancePercentage(keys: number): number {
