@@ -244,10 +244,11 @@ interface HealthCheck {
                       <div class="dist-bar-track">
                         <div
                           class="dist-bar-fill"
-                          [style.width.%]="getDistributionPct(node.keys_count)">
+                          [style.width.%]="getPerformancePercentage(node.keys_count)"
+                          [style.background-color]="getPerformanceColor(node.keys_count)"> 
                         </div>
                       </div>
-                      <span class="dist-pct">{{ getDistributionPct(node.keys_count) | number:'1.0-0' }}%</span>
+                      <span class="dist-pct">{{ getPerformancePercentage(node.keys_count) | number:'1.0-0' }}%</span>
                     </div>
                   </td>
 
@@ -621,10 +622,18 @@ export class ClusterStatusComponent implements OnInit, OnDestroy {
     return this.clusterDistribution?.nodes_distribution.reduce((s, n) => s + n.keys_count, 0) ?? 0;
   }
 
-  /** Quota % di chiavi di un nodo rispetto al totale */
-  getDistributionPct(keys: number): number {
-    const total = this.getTotalKeys();
-    return total === 0 ? 0 : Math.round((keys / total) * 100);
+    /** Quota % di chiavi di un nodo rispetto al totale */
+  getPerformancePercentage(keys: number): number {
+    if (!this.clusterDistribution) return 0;
+    const max = Math.max(...this.clusterDistribution.nodes_distribution.map(n => n.keys_count), 1);
+    return (keys / max) * 100;
+  }
+  getPerformanceColor(keys: number): string {
+    const percentage = this.getPerformancePercentage(keys);
+    if (percentage >= 80) return '#22c55e';
+    if (percentage >= 50) return '#3b82f6';
+    if (percentage >= 20) return '#f59e0b';
+    return '#6c757d';
   }
 
   formatDate(dateString: string): string {
