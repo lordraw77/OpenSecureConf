@@ -5,11 +5,13 @@ import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { OpenSecureConfService } from './services/opensecureconf.service';
 import { ThemeService } from './services/theme.service';
+import { LanguageService } from './services/language.service';
+import { Language, Translations, LANGUAGES } from './i18n/translations';
 
 const SIDEBAR_KEY = 'osc_sidebar_collapsed';
 
 interface NavItem {
-  label: string;
+  key: keyof Translations['nav'];
   icon: string;
   route: string;
   exact?: boolean;
@@ -39,7 +41,7 @@ interface NavItem {
         <button
           class="collapse-btn"
           (click)="toggleSidebar()"
-          [pTooltip]="collapsed ? 'Espandi menu' : ''"
+          [pTooltip]="collapsed ? t.sidebar.expandMenu : ''"
           tooltipPosition="right">
           <i [class]="collapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>
           <span class="collapse-label">-</span>
@@ -53,10 +55,10 @@ interface NavItem {
               routerLinkActive="active"
               [routerLinkActiveOptions]="{ exact: !!item.exact }"
               class="nav-item"
-              [pTooltip]="collapsed ? item.label : ''"
+              [pTooltip]="collapsed ? t.nav[item.key] : ''"
               tooltipPosition="right">
               <i [class]="'pi ' + item.icon"></i>
-              <span class="nav-label">{{ item.label }}</span>
+              <span class="nav-label">{{ t.nav[item.key] }}</span>
               <span class="nav-indicator"></span>
             </a>
           </ng-container>
@@ -69,23 +71,46 @@ interface NavItem {
           <div
             class="footer-action"
             (click)="toggleTheme()"
-            [pTooltip]="isDarkMode ? 'Modalità chiara' : 'Modalità scura'"
+            [pTooltip]="isDarkMode ? t.sidebar.lightMode : t.sidebar.darkMode"
             tooltipPosition="right">
             <div class="theme-switch" [class.active]="isDarkMode">
               <div class="theme-switch-slider">
                 <i [class]="isDarkMode ? 'pi pi-moon' : 'pi pi-sun'"></i>
               </div>
             </div>
-            <span class="footer-label">{{ isDarkMode ? 'Dark mode' : 'Light mode' }}</span>
+            <span class="footer-label">{{ isDarkMode ? t.sidebar.darkMode : t.sidebar.lightMode }}</span>
+          </div>
+
+          <!-- Language selector -->
+          <div
+            class="footer-action lang-action"
+            [pTooltip]="collapsed ? currentLangLabel : ''"
+            tooltipPosition="right">
+            <div class="lang-selector">
+              <span class="lang-flag">{{ currentLangFlag }}</span>
+              <select
+                class="lang-select"
+                [value]="currentLang"
+                (change)="onLangChange($event)"
+                [class.collapsed-select]="collapsed">
+                <option
+                  *ngFor="let lang of availableLangs"
+                  [value]="lang.code">
+                  {{ lang.flag }} {{ lang.label }}
+                </option>
+              </select>
+              <i class="pi pi-chevron-down lang-caret" *ngIf="!collapsed"></i>
+            </div>
+            <span class="footer-label">{{ currentLangLabel }}</span>
           </div>
 
           <!-- Connection status -->
           <div
             class="footer-action status-row"
-            [pTooltip]="connectionStatus ? 'Server raggiungibile' : 'Server non raggiungibile'"
+            [pTooltip]="connectionStatus ? t.sidebar.serverOk : t.sidebar.serverKo"
             tooltipPosition="right">
             <div class="status-dot" [class.connected]="connectionStatus"></div>
-            <span class="footer-label">{{ connectionStatus ? 'Connesso' : 'Disconnesso' }}</span>
+            <span class="footer-label">{{ connectionStatus ? t.sidebar.connected : t.sidebar.disconnected }}</span>
           </div>
 
         </div>
@@ -101,10 +126,10 @@ interface NavItem {
           <button class="hamburger" (click)="toggleSidebar()">
             <i class="pi pi-bars"></i>
           </button>
-          <span class="topbar-title">OpenSecureConf Admin</span>
+          <span class="topbar-title">{{ t.topbar.title }}</span>
           <div class="topbar-actions">
             <div class="status-dot-sm" [class.connected]="connectionStatus"
-                 [pTooltip]="connectionStatus ? 'Connesso' : 'Disconnesso'"
+                 [pTooltip]="connectionStatus ? t.sidebar.serverOk : t.sidebar.serverKo"
                  tooltipPosition="bottom">
             </div>
           </div>
@@ -234,7 +259,6 @@ interface NavItem {
       pointer-events: none;
     }
 
-    /* In collapsed mode center the icon */
     .layout.sidebar-collapsed .collapse-btn {
       justify-content: center;
       padding: 0.6rem 0;
@@ -359,7 +383,7 @@ interface NavItem {
       pointer-events: none;
     }
 
-    /* Theme switch (piccolo) */
+    /* ─── Theme switch ───────────────────────────────── */
     .theme-switch {
       position: relative;
       width: 44px;
@@ -396,101 +420,159 @@ interface NavItem {
 
     .theme-switch.active .theme-switch-slider {
       transform: translateX(20px);
-      color: #764ba2;
     }
 
-    /* Connection status dot */
+    /* ─── Language selector ──────────────────────────── */
+    .lang-action {
+      cursor: default;
+    }
+
+    .lang-selector {
+      position: relative;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+      width: 44px;
+      height: 24px;
+      border-radius: 8px;
+      background: var(--bg-tertiary);
+      border: 1.5px solid var(--border-color);
+      overflow: hidden;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .lang-selector:hover {
+      border-color: #667eea;
+      background: var(--hover-bg);
+    }
+
+    .lang-flag {
+      position: absolute;
+      left: 4px;
+      font-size: 0.75rem;
+      pointer-events: none;
+      z-index: 1;
+      line-height: 1;
+    }
+
+    .lang-select {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      font-size: 0.85rem;
+    }
+
+    .lang-caret {
+      position: absolute;
+      right: 3px;
+      font-size: 0.55rem;
+      color: var(--text-secondary);
+      pointer-events: none;
+    }
+
+    /* In expanded mode, widen slightly to show caret */
+    .layout:not(.sidebar-collapsed) .lang-selector {
+      width: 44px;
+    }
+
+    /* ─── Connection status dot ──────────────────────── */
+    .status-row {
+      cursor: default;
+    }
+
     .status-dot {
       width: 10px;
       height: 10px;
       border-radius: 50%;
-      background: #ef4444;
+      background: var(--text-tertiary);
       flex-shrink: 0;
-      box-shadow: 0 0 0 2px rgba(239,68,68,0.25);
-      transition: background 0.3s, box-shadow 0.3s;
+      transition: background 0.3s;
+      box-shadow: 0 0 0 2px var(--bg-secondary);
     }
 
     .status-dot.connected {
       background: #22c55e;
-      box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
+      box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 6px rgba(34,197,94,0.5);
       animation: pulse-green 2s infinite;
     }
 
-    @keyframes pulse-green {
-      0%, 100% { box-shadow: 0 0 0 2px rgba(34,197,94,0.25); }
-      50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0.1); }
-    }
-
-    /* ─── Main Wrapper ───────────────────────────────── */
+    /* ─── Topbar ─────────────────────────────────────── */
     .main-wrapper {
       flex: 1;
+      margin-left: 260px;
+      transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       flex-direction: column;
-      margin-left: 260px;
-      min-width: 0;
-      transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-height: 100vh;
     }
 
     .layout.sidebar-collapsed .main-wrapper {
       margin-left: 72px;
     }
 
-    /* ─── Topbar (mobile + header strip) ─────────────── */
     .topbar {
       display: none;
       align-items: center;
       gap: 1rem;
-      padding: 0 1.5rem;
-      height: 60px;
+      padding: 0 1.25rem;
+      height: 56px;
       background: var(--card-bg);
-      box-shadow: 0 2px 12px var(--shadow-sm);
+      border-bottom: 1px solid var(--border-color);
       position: sticky;
       top: 0;
       z-index: 100;
-      flex-shrink: 0;
+      box-shadow: 0 2px 8px var(--shadow-sm);
     }
 
     .hamburger {
       background: none;
       border: none;
+      color: var(--text-secondary);
+      font-size: 1.2rem;
       cursor: pointer;
-      color: var(--text-primary);
-      font-size: 1.25rem;
-      padding: 0.5rem;
+      padding: 0.4rem;
       border-radius: 8px;
-      transition: background 0.2s;
     }
 
     .hamburger:hover {
       background: var(--hover-bg);
+      color: #667eea;
     }
 
     .topbar-title {
-      font-weight: 700;
-      font-size: 1.1rem;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-primary);
+      flex: 1;
     }
 
     .topbar-actions {
-      margin-left: auto;
       display: flex;
       align-items: center;
+      gap: 0.75rem;
     }
 
     .status-dot-sm {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-      background: #ef4444;
+      background: var(--text-tertiary);
+      flex-shrink: 0;
       cursor: pointer;
     }
 
     .status-dot-sm.connected {
       background: #22c55e;
       animation: pulse-green 2s infinite;
+    }
+
+    @keyframes pulse-green {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+      50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0);  }
     }
 
     /* ─── Content ─────────────────────────────────────── */
@@ -511,7 +593,6 @@ interface NavItem {
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
-      /* su mobile "collapsed" diventa il pannello aperto (slide-in) */
       .layout:not(.sidebar-collapsed) .sidebar {
         transform: translateX(0);
       }
@@ -535,23 +616,35 @@ export class AppComponent implements OnInit {
   isDarkMode = false;
   collapsed = false;
 
+  currentLang: Language = 'it';
+  t!: ReturnType<LanguageService['getTranslations']>;
+  availableLangs = LANGUAGES;
+
   navItems: NavItem[] = [
-    { label: 'Dashboard',       icon: 'pi-home',       route: '/',         exact: true },
-    { label: 'Configurazioni',  icon: 'pi-cog',        route: '/configs' },
-    { label: 'Grafici',         icon: 'pi-chart-pie',  route: '/charts' },
-    { label: 'Cluster',         icon: 'pi-server',     route: '/cluster' },
-    { label: 'SSE Stats',       icon: 'pi-bolt',       route: '/sse-stats' },
-    { label: 'Metriche',        icon: 'pi-chart-bar',  route: '/metrics' },
-    { label: 'Backup',          icon: 'pi-download',   route: '/backup' },
+    { key: 'dashboard',      icon: 'pi-home',      route: '/',         exact: true },
+    { key: 'configurations', icon: 'pi-cog',       route: '/configs' },
+    { key: 'charts',         icon: 'pi-chart-pie', route: '/charts' },
+    { key: 'cluster',        icon: 'pi-server',    route: '/cluster' },
+    { key: 'sseStats',       icon: 'pi-bolt',      route: '/sse-stats' },
+    { key: 'metrics',        icon: 'pi-chart-bar', route: '/metrics' },
+    { key: 'backup',         icon: 'pi-download',  route: '/backup' },
   ];
+
+  get currentLangFlag(): string {
+    return this.availableLangs.find(l => l.code === this.currentLang)?.flag ?? '🌐';
+  }
+
+  get currentLangLabel(): string {
+    return this.availableLangs.find(l => l.code === this.currentLang)?.label ?? '';
+  }
 
   constructor(
     private oscService: OpenSecureConfService,
-    private themeService: ThemeService
+    private themeService: ThemeService,
+    private langService: LanguageService
   ) {}
 
   ngOnInit() {
-    // Ripristina stato sidebar da localStorage
     const saved = localStorage.getItem(SIDEBAR_KEY);
     this.collapsed = saved === 'true';
 
@@ -562,6 +655,11 @@ export class AppComponent implements OnInit {
     this.themeService.darkMode$.subscribe(isDark => {
       this.isDarkMode = isDark;
     });
+
+    this.langService.lang$.subscribe(lang => {
+      this.currentLang = lang;
+      this.t = this.langService.t(lang);
+    });
   }
 
   toggleSidebar() {
@@ -571,5 +669,10 @@ export class AppComponent implements OnInit {
 
   toggleTheme() {
     this.themeService.toggleTheme();
+  }
+
+  onLangChange(event: Event) {
+    const lang = (event.target as HTMLSelectElement).value as Language;
+    this.langService.setLanguage(lang);
   }
 }
