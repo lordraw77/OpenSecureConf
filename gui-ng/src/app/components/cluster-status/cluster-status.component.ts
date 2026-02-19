@@ -1,9 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ButtonModule } from 'primeng/button';
+import { TooltipModule } from 'primeng/tooltip';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
 
 interface ClusterDistribution {
@@ -20,32 +21,60 @@ interface NodeDistribution {
   keys_count: number;
 }
 
+interface HealthCheck {
+  status: string;
+  node_id: string;
+  timestamp?: string;
+}
+
 @Component({
   selector: 'app-cluster-status',
   standalone: true,
-  imports: [CommonModule, CardModule, TableModule, TagModule, ButtonModule],
+  imports: [CommonModule, CardModule, TableModule, TagModule, ButtonModule, TooltipModule],
   template: `
     <div class="cluster-status">
+
+      <!-- ── Header ── -->
       <div class="page-header">
         <div class="header-content">
           <div>
-            <h1>
-              <i class="pi pi-server"></i>
-              Cluster Status
-            </h1>
+            <h1><i class="pi pi-server"></i> Cluster Status</h1>
             <p>Monitora lo stato del cluster OpenSecureConf</p>
           </div>
-          <p-button 
-            label="Aggiorna" 
-            icon="pi pi-refresh" 
-            (onClick)="loadClusterStatus()"
-            [loading]="loading">
-          </p-button>
+          <div class="header-right">
+
+            <!-- Countdown (solo se auto-refresh attivo) -->
+            <div class="refresh-countdown" *ngIf="autoRefresh && !loading">
+              <span class="countdown-label">Prossimo refresh</span>
+              <span class="countdown-value" [class.urgent]="countdown <= 5">{{ countdown }}s</span>
+            </div>
+
+            <!-- Toggle auto-refresh -->
+            <button
+              class="auto-refresh-toggle"
+              [class.active]="autoRefresh"
+              (click)="toggleAutoRefresh()"
+              [pTooltip]="autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh'"
+              tooltipPosition="bottom">
+              <i [class]="autoRefresh ? 'pi pi-pause-circle' : 'pi pi-play-circle'"></i>
+              <span>Auto-refresh {{ autoRefresh ? 'ON' : 'OFF' }}</span>
+            </button>
+
+            <!-- Aggiorna manuale -->
+            <p-button
+              label="Aggiorna"
+              icon="pi pi-refresh"
+              (onClick)="loadClusterStatus()"
+              [loading]="loading">
+            </p-button>
+
+          </div>
         </div>
       </div>
 
       <div class="grid">
-        <!-- Cluster Info Card -->
+
+        <!-- ── Cluster Info ── -->
         <div class="col-12" *ngIf="clusterDistribution">
           <p-card>
             <ng-template pTemplate="header">
@@ -55,59 +84,57 @@ interface NodeDistribution {
               </div>
             </ng-template>
             <div class="cluster-info-grid">
+
               <div class="info-item">
-                <span class="info-label">Modalità Cluster:</span>
-                <span 
-                  class="custom-tag-medium"
-                  [style.background-color]="getClusterModeColor(clusterDistribution.cluster_mode)"
-                  [style.color]="'#ffffff'">
+                <span class="info-label">Modalità Cluster</span>
+                <span class="mode-badge" [class.replica]="clusterDistribution.cluster_mode === 'replica'">
                   {{ clusterDistribution.cluster_mode.toUpperCase() }}
                 </span>
               </div>
-              
+
               <div class="info-item">
-                <span class="info-label">Tipo Nodo:</span>
-                <p-tag 
-                  [value]="clusterDistribution.is_replica ? 'Replica' : 'Master'" 
+                <span class="info-label">Tipo Nodo</span>
+                <p-tag
+                  [value]="clusterDistribution.is_replica ? 'Replica' : 'Master'"
                   [severity]="clusterDistribution.is_replica ? 'info' : 'success'"
                   [rounded]="true">
                 </p-tag>
               </div>
-              
+
               <div class="info-item">
-                <span class="info-label">Sincronizzazione:</span>
-                <p-tag 
-                  [value]="clusterDistribution.all_nodes_synced ? 'Sincronizzati' : 'Non Sincronizzati'" 
+                <span class="info-label">Sincronizzazione</span>
+                <p-tag
+                  [value]="clusterDistribution.all_nodes_synced ? 'Sincronizzati' : 'Non Sincronizzati'"
                   [severity]="clusterDistribution.all_nodes_synced ? 'success' : 'warning'"
                   [rounded]="true">
                 </p-tag>
               </div>
-              
+
               <div class="info-item">
-                <span class="info-label">Totale Nodi:</span>
-                <span class="info-value-large">
-                  {{ clusterDistribution.nodes_distribution.length }}
-                </span>
+                <span class="info-label">Totale Nodi</span>
+                <span class="info-value-large">{{ clusterDistribution.nodes_distribution.length }}</span>
+                <span class="info-sub">nel cluster</span>
               </div>
-              
+
               <div class="info-item">
-                <span class="info-label">Nodi Attivi:</span>
-                <span class="info-value-large healthy-count">
+                <span class="info-label">Nodi Attivi</span>
+                <span class="info-value-large" [class.all-healthy]="getHealthyNodesCount() === clusterDistribution.nodes_distribution.length" [class.some-down]="getHealthyNodesCount() < clusterDistribution.nodes_distribution.length">
                   {{ getHealthyNodesCount() }}
                 </span>
+                <span class="info-sub">{{ getAvailabilityPct() }}% disponibilità</span>
               </div>
-              
+
               <div class="info-item">
-                <span class="info-label">Totale Chiavi:</span>
-                <span class="info-value-large">
-                  {{ getTotalKeys() }}
-                </span>
+                <span class="info-label">Totale Chiavi</span>
+                <span class="info-value-large">{{ getTotalKeys() | number }}</span>
+                <span class="info-sub">{{ clusterDistribution.nodes_distribution[0]?.keys_count | number }} per nodo</span>
               </div>
+
             </div>
           </p-card>
         </div>
 
-        <!-- Health Check Card -->
+        <!-- ── Health Check ── -->
         <div class="col-12">
           <p-card>
             <ng-template pTemplate="header">
@@ -117,27 +144,34 @@ interface NodeDistribution {
               </div>
             </ng-template>
             <div class="health-check" *ngIf="healthCheck">
+
               <div class="health-item">
-                <span class="health-label">Stato:</span>
-                <p-tag 
-                  [value]="healthCheck.status" 
+                <span class="health-label">Stato</span>
+                <p-tag
+                  [value]="healthCheck.status"
                   [severity]="healthCheck.status === 'healthy' ? 'success' : 'danger'"
                   [rounded]="true">
                 </p-tag>
               </div>
+
               <div class="health-item">
-                <span class="health-label">Node ID:</span>
-                <span class="health-value">{{ healthCheck.node_id }}</span>
+                <span class="health-label">Node ID</span>
+                <span class="health-value mono">{{ healthCheck.node_id }}</span>
               </div>
+
               <div class="health-item" *ngIf="healthCheck.timestamp">
-                <span class="health-label">Ultimo aggiornamento:</span>
+                <span class="health-label">Ultimo Aggiornamento</span>
                 <span class="health-value">{{ formatDate(healthCheck.timestamp) }}</span>
               </div>
+
+            </div>
+            <div class="health-empty" *ngIf="!healthCheck">
+              <i class="pi pi-spin pi-spinner"></i> Caricamento...
             </div>
           </p-card>
         </div>
 
-        <!-- Nodes Table -->
+        <!-- ── Nodes Table ── -->
         <div class="col-12" *ngIf="clusterDistribution">
           <p-card>
             <ng-template pTemplate="header">
@@ -146,93 +180,105 @@ interface NodeDistribution {
                 Distribuzione Nodi ({{ clusterDistribution.nodes_distribution.length }} nodi)
               </div>
             </ng-template>
-            <p-table 
-              [value]="clusterDistribution.nodes_distribution" 
+
+            <p-table
+              [value]="clusterDistribution.nodes_distribution"
               [tableStyle]="{ 'min-width': '100%' }"
               styleClass="p-datatable-striped">
+
               <ng-template pTemplate="header">
                 <tr>
                   <th>Node ID</th>
-                  <th>Locale</th>
+                  <th style="text-align:center">Locale</th>
                   <th>Stato</th>
                   <th>Chiavi</th>
-                  <th>Performance</th>
+                  <th>Distribuzione chiavi</th>
                 </tr>
               </ng-template>
+
               <ng-template pTemplate="body" let-node>
                 <tr [class.local-node]="node.is_local">
+
+                  <!-- Node ID -->
                   <td>
                     <div class="node-id-container">
                       <span class="node-id">{{ node.node_id }}</span>
-                      <p-tag 
-                        *ngIf="node.is_local" 
-                        value="LOCALE" 
+                      <p-tag
+                        *ngIf="node.is_local"
+                        value="LOCALE"
                         severity="contrast"
-                        [rounded]="true"
-                        styleClass="ml-2">
+                        [rounded]="true">
                       </p-tag>
                     </div>
                   </td>
-                  <td>
-                    <i 
-                      [class]="node.is_local ? 'pi pi-check-circle' : 'pi pi-circle'" 
+
+                  <!-- Locale icon -->
+                  <td style="text-align:center">
+                    <i
+                      [class]="node.is_local ? 'pi pi-check-circle' : 'pi pi-circle'"
                       [style.color]="node.is_local ? '#22c55e' : '#6c757d'"
                       style="font-size: 1.25rem;">
                     </i>
                   </td>
+
+                  <!-- Stato -->
                   <td>
-                    <p-tag 
-                      [value]="node.is_healthy ? 'Healthy' : 'Unhealthy'" 
+                    <p-tag
+                      [value]="node.is_healthy ? 'Healthy' : 'Unhealthy'"
                       [severity]="node.is_healthy ? 'success' : 'danger'"
                       [rounded]="true">
                     </p-tag>
                   </td>
+
+                  <!-- Chiavi -->
                   <td>
                     <span class="keys-count">
                       <i class="pi pi-key"></i>
-                      {{ node.keys_count }}
+                      {{ node.keys_count | number }}
                     </span>
                   </td>
+
+                  <!-- Barra distribuzione -->
                   <td>
-                    <div class="performance-bar">
-                      <div 
-                        class="performance-fill"
-                        [style.width.%]="getPerformancePercentage(node.keys_count)"
-                        [style.background-color]="getPerformanceColor(node.keys_count)"> 
-                        <span class="performance-label">
-                          {{ getPerformancePercentage(node.keys_count) | number:'1.0-0' }}%
-                        </span>
+                    <div class="dist-bar-wrap">
+                      <div class="dist-bar-track">
+                        <div
+                          class="dist-bar-fill"
+                          [style.width.%]="getDistributionPct(node.keys_count)">
+                        </div>
                       </div>
+                      <span class="dist-pct">{{ getDistributionPct(node.keys_count) | number:'1.0-0' }}%</span>
                     </div>
                   </td>
+
                 </tr>
               </ng-template>
+
               <ng-template pTemplate="emptymessage">
                 <tr>
-                  <td colspan="5" class="text-center">
-                    Nessun nodo trovato
-                  </td>
+                  <td colspan="5" class="text-center">Nessun nodo trovato</td>
                 </tr>
               </ng-template>
+
             </p-table>
           </p-card>
         </div>
+
       </div>
     </div>
   `,
   styles: [`
-    .cluster-status {
-      animation: fadeInUp 0.5s ease-out;
-    }
+    /* ── Layout ── */
+    .cluster-status { animation: fadeInUp 0.4s ease-out; }
 
+    /* ── Page Header ── */
     .page-header {
-      margin-bottom: 2rem;
+      margin-bottom: 1.5rem;
       background: var(--card-bg);
-      padding: 2rem;
+      padding: 1.5rem 2rem;
       border-radius: 16px;
       box-shadow: 0 4px 20px var(--shadow-sm);
     }
-
     .header-content {
       display: flex;
       justify-content: space-between;
@@ -240,179 +286,249 @@ interface NodeDistribution {
       flex-wrap: wrap;
       gap: 1rem;
     }
-
     .page-header h1 {
       color: var(--text-primary);
-      margin: 0 0 0.5rem 0;
-      font-size: 2rem;
+      margin: 0 0 0.35rem 0;
+      font-size: 1.75rem;
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.6rem;
     }
-
-    .page-header h1 i {
-      color: #667eea;
-    }
-
+    .page-header h1 i { color: #667eea; }
     .page-header p {
       color: var(--text-secondary);
       margin: 0;
-      font-size: 1.1rem;
+      font-size: 0.95rem;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .refresh-countdown {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .countdown-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    .countdown-value {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: #22c55e;
+      transition: color 0.3s;
+    }
+    .countdown-value.urgent { color: #ef4444; }
+
+    /* Auto-refresh toggle */
+    .auto-refresh-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.6rem 1.25rem;
+      border-radius: 50px;
+      border: none;
+      background: #6c757d;
+      color: #ffffff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      white-space: nowrap;
+    }
+    .auto-refresh-toggle:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .auto-refresh-toggle:active {
+      transform: translateY(0);
+    }
+    .auto-refresh-toggle.active {
+      background: #22c55e;
+      box-shadow: 0 2px 10px rgba(34, 197, 94, 0.4);
+    }
+    .auto-refresh-toggle.active:hover {
+      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.5);
     }
 
+    /* Override PrimeNG p-button per stile pill */
+    :host ::ng-deep .p-button {
+      border-radius: 50px !important;
+      font-weight: 600 !important;
+      padding: 0.6rem 1.25rem !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
+      transition: filter 0.2s, transform 0.1s, box-shadow 0.2s !important;
+    }
+    :host ::ng-deep .p-button:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    }
+    :host ::ng-deep .p-button:active {
+      transform: translateY(0);
+    }
+
+    /* ── Card Header ── */
     .card-header-custom {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      font-size: 1.1rem;
-      font-weight: 600;
+      gap: 0.6rem;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.08));
     }
 
+    /* ── Cluster Info Grid ── */
     .cluster-info-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
     }
-
     .info-item {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
-      padding: 1.5rem;
+      gap: 0.5rem;
+      padding: 1.25rem;
       background: var(--bg-secondary);
       border-radius: 12px;
-      transition: all 0.2s;
+      transition: transform 0.2s, background 0.2s;
     }
-
     .info-item:hover {
       background: var(--hover-bg);
       transform: translateY(-2px);
     }
-
     .info-label {
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-      font-weight: 600;
+      font-size: 0.72rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
     }
-
     .info-value-large {
-      color: var(--text-primary);
       font-size: 2rem;
-      font-weight: 700;
+      font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .info-value-large.all-healthy { color: #22c55e; }
+    .info-value-large.some-down  { color: #f59e0b; }
+    .info-sub {
+      font-size: 0.78rem;
+      color: var(--text-secondary);
     }
 
-    .healthy-count {
-      color: #22c55e;
-    }
-
-    .custom-tag-medium {
+    /* Mode badge */
+    .mode-badge {
       display: inline-block;
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      font-weight: 700;
+      padding: 0.35rem 1rem;
       border-radius: 20px;
-      letter-spacing: 1px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      background: rgba(108, 126, 234, 0.15);
+      color: #667eea;
+      border: 1px solid rgba(108, 126, 234, 0.35);
+    }
+    .mode-badge.replica {
+      background: rgba(59, 130, 246, 0.12);
+      color: #3b82f6;
+      border-color: rgba(59, 130, 246, 0.3);
     }
 
+    /* ── Health Check ── */
     .health-check {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 2rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
     }
-
     .health-item {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
-      padding: 1.5rem;
+      gap: 0.5rem;
+      padding: 1.25rem;
       background: var(--bg-secondary);
       border-radius: 12px;
     }
-
     .health-label {
-      color: var(--text-secondary);
-      font-size: 0.875rem;
-      font-weight: 600;
+      font-size: 0.72rem;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
     }
-
     .health-value {
-      color: var(--text-primary);
-      font-size: 1.25rem;
+      font-size: 1.1rem;
       font-weight: 600;
-      font-family: 'Courier New', monospace;
+      color: var(--text-primary);
+    }
+    .health-value.mono { font-family: 'Courier New', monospace; }
+    .health-empty {
+      padding: 1rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
+    /* ── Table ── */
     .node-id-container {
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-
     .node-id {
-      color: var(--text-primary);
       font-family: 'Courier New', monospace;
       font-weight: 600;
+      font-size: 0.9rem;
       background: var(--bg-secondary);
-      padding: 0.5rem 0.75rem;
+      padding: 0.3rem 0.6rem;
       border-radius: 6px;
-      display: inline-block;
     }
-
-    .local-node {
-      background: var(--hover-bg) !important;
-    }
+    .local-node { background: var(--hover-bg) !important; }
 
     .keys-count {
-      color: var(--text-primary);
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 1rem;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 1.1rem;
+      gap: 0.4rem;
     }
+    .keys-count i { color: #667eea; }
 
-    .keys-count i {
-      color: #667eea;
+    /* Distribution bar */
+    .dist-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
     }
-
-    // .performance-bar {
-    //   width: 100%;
-    //   height: 24px;
-    //   background: var(--bg-secondary);
-    //   border-radius: 12px;
-    //   overflow: hidden;
-    // }
-    .performance-bar {
-      position: relative;
-      width: 100%;
-      height: 24px;
+    .dist-bar-track {
+      flex: 1;
+      height: 10px;
       background: var(--bg-secondary);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
     }
-    .performance-label {
-      position: absolute;        
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-size: 0.75rem;
-      font-weight: 700;
-      //color: #ffffff;
-      //text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);  
-      pointer-events: none;
-      white-space: nowrap;
-      color: #000000;           
-      text-shadow: none;        
-    }
-
-    .performance-fill {
+    .dist-bar-fill {
       height: 100%;
-      transition: width 0.3s ease;
-      border-radius: 12px;
+      background: #22c55e;
+      border-radius: 10px;
+      box-shadow: 0 0 6px rgba(34,197,94,0.5);
+      transition: width 0.5s ease;
+    }
+    .dist-pct {
+      min-width: 36px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #22c55e;
+      text-align: right;
     }
 
     .text-center {
@@ -421,44 +537,59 @@ interface NodeDistribution {
       color: var(--text-secondary);
     }
 
-    .ml-2 {
-      margin-left: 0.5rem;
-    }
-
     @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
   `]
 })
-export class ClusterStatusComponent implements OnInit {
+export class ClusterStatusComponent implements OnInit, OnDestroy {
   clusterDistribution: ClusterDistribution | null = null;
-  healthCheck: any = null;
+  healthCheck: HealthCheck | null = null;
   loading = false;
+
+  countdown = 30;
+  autoRefresh = true;
+  private countdownInterval: any;
 
   constructor(private oscService: OpenSecureConfService) {}
 
-  ngOnInit() {
+  ngOnInit(): void {
     this.loadClusterStatus();
+    this.startCountdown();
   }
 
-  loadClusterStatus() {
+  ngOnDestroy(): void {
+    clearInterval(this.countdownInterval);
+  }
+
+  toggleAutoRefresh(): void {
+    this.autoRefresh = !this.autoRefresh;
+    if (this.autoRefresh) {
+      this.countdown = 30;
+    }
+  }
+
+  private startCountdown(): void {
+    this.countdownInterval = setInterval(() => {
+      if (!this.autoRefresh) return;
+      this.countdown--;
+      if (this.countdown <= 0) {
+        this.loadClusterStatus();
+        this.countdown = 30;
+      }
+    }, 1000);
+  }
+
+  loadClusterStatus(): void {
     this.loading = true;
+    this.countdown = 30;
 
     this.oscService.healthCheck().subscribe({
       next: (health) => {
-        this.healthCheck = health;
-        this.healthCheck.timestamp = new Date().toISOString();
+        this.healthCheck = { ...health, timestamp: new Date().toISOString() };
       },
-      error: (error) => {
-        console.error('Health check failed:', error);
-      }
+      error: (err) => console.error('Health check failed:', err),
     });
 
     this.oscService.getClusterDistribution().subscribe({
@@ -466,53 +597,37 @@ export class ClusterStatusComponent implements OnInit {
         this.clusterDistribution = distribution;
         this.loading = false;
       },
-      error: (error) => {
-        console.error('Cluster distribution failed:', error);
+      error: (err) => {
+        console.error('Cluster distribution failed:', err);
         this.loading = false;
-      }
+      },
     });
   }
 
-  getClusterModeColor(mode: string): string {
-    if (mode === 'replica') return '#3b82f6';
-    if (mode === 'master') return '#22c55e';
-    return '#6c757d';
-  }
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
   getHealthyNodesCount(): number {
-    if (!this.clusterDistribution) return 0;
-    return this.clusterDistribution.nodes_distribution.filter(n => n.is_healthy).length;
+    return this.clusterDistribution?.nodes_distribution.filter(n => n.is_healthy).length ?? 0;
   }
 
-  // getTotalKeys(): number {
-  //   if (!this.clusterDistribution) return 0;
-  //   return this.clusterDistribution.nodes_distribution.reduce((sum, node) => sum + node.keys_count, 0);
-  // }
+  getAvailabilityPct(): number {
+    if (!this.clusterDistribution) return 0;
+    const total = this.clusterDistribution.nodes_distribution.length;
+    return total === 0 ? 0 : Math.round((this.getHealthyNodesCount() / total) * 100);
+  }
+
+  /** Somma reale delle chiavi su tutti i nodi */
   getTotalKeys(): number {
-    if (!this.clusterDistribution) return 0;
-    const nodes = this.clusterDistribution.nodes_distribution;
-    if (nodes.length === 0) return 0;
-    const total = nodes.reduce((sum, node) => sum + node.keys_count, 0);
-    return Math.round(total / nodes.length);
+    return this.clusterDistribution?.nodes_distribution.reduce((s, n) => s + n.keys_count, 0) ?? 0;
   }
 
-  getPerformancePercentage(keys: number): number {
-    if (!this.clusterDistribution) return 0;
-    const max = Math.max(...this.clusterDistribution.nodes_distribution.map(n => n.keys_count), 1);
-    return (keys / max) * 100;
-  }
-
-  getPerformanceColor(keys: number): string {
-    const percentage = this.getPerformancePercentage(keys);
-    if (percentage >= 80) return '#22c55e';
-    if (percentage >= 50) return '#3b82f6';
-    if (percentage >= 20) return '#f59e0b';
-    return '#6c757d';
+  /** Quota % di chiavi di un nodo rispetto al totale */
+  getDistributionPct(keys: number): number {
+    const total = this.getTotalKeys();
+    return total === 0 ? 0 : Math.round((keys / total) * 100);
   }
 
   formatDate(dateString: string): string {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('it-IT');
+    return dateString ? new Date(dateString).toLocaleString('it-IT') : '-';
   }
 }

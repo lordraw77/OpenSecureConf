@@ -41,7 +41,7 @@ interface NavItem {
           (click)="toggleSidebar()"
           [pTooltip]="collapsed ? 'Espandi menu' : ''"
           tooltipPosition="right">
-          <i [class]="collapsed ? 'pi pi-chevron-right' : 'pi pi-chevron-left'"></i>
+          <i [class]="collapsed ? 'pi pi-angle-double-right' : 'pi pi-angle-double-left'"></i>
           <span class="collapse-label">-</span>
         </button>
 
