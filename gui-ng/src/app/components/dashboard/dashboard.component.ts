@@ -1,9 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CardModule } from 'primeng/card';
 import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
+import { Subscription } from 'rxjs';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
+import { LanguageService } from '../../services/language.service';
+import { Language, Translations } from '../../i18n/translations';
 
 interface ServiceInfo {
   service: string;
@@ -21,9 +24,9 @@ interface ServiceInfo {
       <div class="page-header">
         <h1>
           <i class="pi pi-chart-line"></i>
-          Dashboard
+          {{ t.nav.dashboard }}
         </h1>
-        <p>Panoramica generale del sistema OpenSecureConf</p>
+        <p>{{ t.dashboard.subtitle }}</p>
       </div>
 
       <div class="grid">
@@ -34,7 +37,7 @@ interface ServiceInfo {
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ totalConfigs }}</div>
-              <div class="stat-label">Configurazioni Totali</div>
+              <div class="stat-label">{{ t.dashboard.totalConfigs }}</div>
             </div>
           </div>
         </div>
@@ -46,7 +49,7 @@ interface ServiceInfo {
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ totalCategories }}</div>
-              <div class="stat-label">Categorie</div>
+              <div class="stat-label">{{ t.dashboard.categories }}</div>
             </div>
           </div>
         </div>
@@ -58,7 +61,7 @@ interface ServiceInfo {
             </div>
             <div class="stat-content">
               <div class="stat-value">{{ totalEnvironments }}</div>
-              <div class="stat-label">Ambienti</div>
+              <div class="stat-label">{{ t.dashboard.environments }}</div>
             </div>
           </div>
         </div>
@@ -69,8 +72,8 @@ interface ServiceInfo {
               <i class="pi pi-server"></i>
             </div>
             <div class="stat-content">
-              <div class="stat-value">{{ clusterEnabled ? 'Attivo' : 'Inattivo' }}</div>
-              <div class="stat-label">Cluster</div>
+              <div class="stat-value">{{ clusterEnabled ? t.dashboard.clusterEnabled : t.dashboard.clusterDisabled }}</div>
+              <div class="stat-label">{{ t.dashboard.cluster }}</div>
             </div>
           </div>
         </div>
@@ -82,34 +85,25 @@ interface ServiceInfo {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-info-circle"></i>
-                Informazioni Servizio
+                {{ t.dashboard.serviceInfo }}
               </div>
             </ng-template>
             <div class="service-info-grid">
-              <div class="info-item">
-                <i class="pi pi-server info-icon"></i>
-                <div>
-                  <div class="info-label">Servizio</div>
-                  <div class="info-value">{{ serviceInfo.service }}</div>
-                </div>
+              <div class="service-info-item">
+                <div class="info-label">{{ t.dashboard.service }}</div>
+                <div class="info-value">{{ serviceInfo.service }}</div>
               </div>
-              <div class="info-item">
-                <i class="pi pi-tag info-icon"></i>
-                <div>
-                  <div class="info-label">Versione</div>
-                  <div class="info-value">{{ serviceInfo.version }}</div>
-                </div>
+              <div class="service-info-item">
+                <div class="info-label">{{ t.dashboard.version }}</div>
+                <div class="info-value">{{ serviceInfo.version }}</div>
               </div>
-              <div class="info-item">
-                <i class="pi pi-sitemap info-icon"></i>
-                <div>
-                  <div class="info-label">Cluster</div>
-                  <p-tag 
-                    [value]="clusterEnabled ? 'Abilitato' : 'Disabilitato'" 
-                    [severity]="clusterEnabled ? 'success' : 'secondary'"
-                    [rounded]="true">
-                  </p-tag>
-                </div>
+              <div class="service-info-item">
+                <div class="info-label">{{ t.dashboard.cluster }}</div>
+                <p-tag
+                  [value]="clusterEnabled ? t.dashboard.clusterEnabled : t.dashboard.clusterDisabled"
+                  [severity]="clusterEnabled ? 'success' : 'secondary'"
+                  [rounded]="true">
+                </p-tag>
               </div>
             </div>
           </p-card>
@@ -122,29 +116,29 @@ interface ServiceInfo {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-tag"></i>
-                Configurazioni per Categoria ({{ categoryStats.length }})
+                {{ t.dashboard.configsByCategory }} ({{ categoryStats.length }})
               </div>
             </ng-template>
             <div *ngIf="categoryStats.length > 0">
-              <p-table 
-                [value]="categoryStats" 
+              <p-table
+                [value]="categoryStats"
                 [tableStyle]="{ 'min-width': '100%' }"
                 [scrollable]="true"
                 scrollHeight="400px">
                 <ng-template pTemplate="header">
                   <tr>
-                    <th>Categoria</th>
-                    <th class="text-right">Conteggio</th>
+                    <th>{{ t.dashboard.colCategory }}</th>
+                    <th class="text-right">{{ t.dashboard.colCount }}</th>
                   </tr>
                 </ng-template>
                 <ng-template pTemplate="body" let-stat>
                   <tr>
                     <td>
-                      <span 
+                      <span
                         class="custom-tag"
                         [style.background-color]="getColorForValue(stat.category)"
                         [style.color]="getTextColor(getColorForValue(stat.category))">
-                        {{ stat.category || 'Senza categoria' }}
+                        {{ stat.category || t.dashboard.noCategory }}
                       </span>
                     </td>
                     <td class="text-right">
@@ -156,7 +150,7 @@ interface ServiceInfo {
             </div>
             <div *ngIf="categoryStats.length === 0" class="empty-message">
               <i class="pi pi-inbox empty-icon"></i>
-              <p>Nessuna categoria trovata</p>
+              <p>{{ t.dashboard.emptyCategoryMsg }}</p>
             </div>
           </p-card>
         </div>
@@ -166,29 +160,29 @@ interface ServiceInfo {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-sitemap"></i>
-                Configurazioni per Ambiente ({{ environmentStats.length }})
+                {{ t.dashboard.configsByEnvironment }} ({{ environmentStats.length }})
               </div>
             </ng-template>
             <div *ngIf="environmentStats.length > 0">
-              <p-table 
-                [value]="environmentStats" 
+              <p-table
+                [value]="environmentStats"
                 [tableStyle]="{ 'min-width': '100%' }"
                 [scrollable]="true"
                 scrollHeight="400px">
                 <ng-template pTemplate="header">
                   <tr>
-                    <th>Ambiente</th>
-                    <th class="text-right">Conteggio</th>
+                    <th>{{ t.dashboard.colEnvironment }}</th>
+                    <th class="text-right">{{ t.dashboard.colCount }}</th>
                   </tr>
                 </ng-template>
                 <ng-template pTemplate="body" let-stat>
                   <tr>
                     <td>
-                      <span 
+                      <span
                         class="custom-tag"
                         [style.background-color]="getColorForValue(stat.environment)"
                         [style.color]="getTextColor(getColorForValue(stat.environment))">
-                        {{ stat.environment || 'Senza ambiente' }}
+                        {{ stat.environment || t.dashboard.noEnvironment }}
                       </span>
                     </td>
                     <td class="text-right">
@@ -200,7 +194,7 @@ interface ServiceInfo {
             </div>
             <div *ngIf="environmentStats.length === 0" class="empty-message">
               <i class="pi pi-inbox empty-icon"></i>
-              <p>Nessun ambiente trovato</p>
+              <p>{{ t.dashboard.emptyEnvironmentMsg }}</p>
             </div>
           </p-card>
         </div>
@@ -425,7 +419,7 @@ interface ServiceInfo {
     }
   `]
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   serviceInfo: ServiceInfo | null = null;
   totalConfigs = 0;
   totalCategories = 0;
@@ -436,22 +430,38 @@ export class DashboardComponent implements OnInit {
   categoryStats: Array<{ category: string; count: number }> = [];
   environmentStats: Array<{ environment: string; count: number }> = [];
 
-  constructor(private oscService: OpenSecureConfService) {}
+  t!: Translations;
+  private langSub!: Subscription;
+
+  constructor(
+    private oscService: OpenSecureConfService,
+    private langService: LanguageService
+  ) {}
 
   ngOnInit() {
+    // Inizializza le traduzioni e si aggiorna al cambio lingua
+    this.t = this.langService.getTranslations();
+    this.langSub = this.langService.lang$.subscribe((lang: Language) => {
+      this.t = this.langService.t(lang);
+    });
+
     this.loadDashboardData();
+  }
+
+  ngOnDestroy() {
+    this.langSub?.unsubscribe();
   }
 
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
-    
+
     let hash = 2166136261;
     for (let i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
       hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
     hash = hash >>> 0;
-    
+
     const colors = [
       '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
       '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
@@ -461,7 +471,7 @@ export class DashboardComponent implements OnInit {
       '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
       '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
     ];
-    
+
     const index = hash % colors.length;
     return colors[index];
   }
@@ -471,18 +481,16 @@ export class DashboardComponent implements OnInit {
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
-    
+
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return luminance > 0.5 ? '#000000' : '#ffffff';
   }
 
   private async loadDashboardData() {
     try {
-      // Carica info servizio - questa è la fonte principale per cluster_enabled
       this.oscService.getInfo().subscribe({
         next: (info) => {
           this.serviceInfo = info as ServiceInfo;
-          // Imposta cluster_enabled SOLO da serviceInfo
           this.clusterEnabled = info.cluster_enabled === true;
           console.log('Service info loaded. Cluster enabled:', this.clusterEnabled);
         },
@@ -492,15 +500,11 @@ export class DashboardComponent implements OnInit {
         }
       });
 
-      // Prova a caricare cluster distribution solo se necessario
-      // Ma NON usare questo per determinare clusterEnabled
       this.oscService.getClusterDistribution().subscribe({
         next: (distribution) => {
           console.log('Cluster distribution loaded:', distribution);
-          // Non modificare clusterEnabled qui
         },
-        error: (err) => {
-          // Errore 400 è normale se cluster non è abilitato
+        error: () => {
           console.log('Cluster distribution not available (expected if cluster is disabled)');
         }
       });

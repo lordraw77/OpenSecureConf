@@ -1,26 +1,35 @@
-import { Component, OnInit, ViewChild  } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TableModule,Table  } from 'primeng/table';
+import { TableModule, Table } from 'primeng/table';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { DialogModule } from 'primeng/dialog';
 import { DropdownModule } from 'primeng/dropdown';
-import { MultiSelectModule } from 'primeng/multiselect';  
+import { MultiSelectModule } from 'primeng/multiselect';
 import { InputTextareaModule } from 'primeng/inputtextarea';
 import { TagModule } from 'primeng/tag';
 import { ConfirmDialogModule } from 'primeng/confirmdialog';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 import { ConfirmationService, MessageService } from 'primeng/api';
+import { Subscription } from 'rxjs';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
-import { ConfigEntry } from 'opensecureconf-client';
+import { LanguageService } from '../../services/language.service';
+import { Language, Translations } from '../../i18n/translations';
 
-// Aggiunto tipo per PrimeNG severity
-type PrimeNGSeverity = 'success' | 'secondary' | 'info' | 'warning' | 'danger' | 'contrast';
+interface ConfigEntry {
+  key:          string;
+  value:        any;
+  category:     string;
+  environment:  string;
+  created_at?:  string;
+  updated_at?:  string;
+}
 
 interface ExtendedConfigEntry extends ConfigEntry {
-  created_at?: string;
-  updated_at?: string;
+  id?:          number | string;
+  updated_at?:  string;
 }
 
 @Component({
@@ -34,11 +43,12 @@ interface ExtendedConfigEntry extends ConfigEntry {
     InputTextModule,
     DialogModule,
     DropdownModule,
-    MultiSelectModule,  // ✅ AGGIUNTO
+    MultiSelectModule,
     InputTextareaModule,
     TagModule,
     ConfirmDialogModule,
-    ToastModule
+    ToastModule,
+    TooltipModule,
   ],
   providers: [ConfirmationService, MessageService],
   template: `
@@ -46,56 +56,57 @@ interface ExtendedConfigEntry extends ConfigEntry {
       <p-toast></p-toast>
       <p-confirmDialog></p-confirmDialog>
 
+      <!-- ── Page Header ── -->
       <div class="page-header">
         <div class="header-content">
           <div>
-            <h1>
-              <i class="pi pi-cog"></i>
-              Gestione Configurazioni
-            </h1>
-            <p>Gestisci tutte le configurazioni del sistema</p>
+            <h1><i class="pi pi-cog"></i> {{ t.configs.title }}</h1>
+            <p>{{ t.configs.subtitle }}</p>
           </div>
-          <p-button 
-            label="Nuova Configurazione" 
-            icon="pi pi-plus" 
+          <p-button
+            [label]="t.configs.newConfig"
+            icon="pi pi-plus"
             (onClick)="showCreateDialog()"
             styleClass="p-button-success">
           </p-button>
         </div>
       </div>
 
+      <!-- ── Table ── -->
       <div class="table-card">
-        <p-table 
+        <p-table
           #dt
-          [value]="configs" 
-          [paginator]="true" 
+          [value]="configs"
+          [paginator]="true"
           [rows]="10"
           [rowsPerPageOptions]="[10, 25, 50, 75, 100]"
           [loading]="loading"
           [globalFilterFields]="['key', 'category', 'environment']"
           [tableStyle]="{ 'min-width': '100%' }"
           styleClass="p-datatable-striped">
-          
+
+          <!-- Caption / Filters -->
           <ng-template pTemplate="caption">
             <div class="table-header">
               <span class="p-input-icon-left">
                 <i class="pi pi-search"></i>
-                <input 
-                  pInputText 
-                  type="text" 
-                  (input)="dt.filterGlobal($any($event.target).value, 'contains')" 
-                  placeholder="Cerca..." />
+                <input
+                  pInputText
+                  type="text"
+                  (input)="dt.filterGlobal($any($event.target).value, 'contains')"
+                  [placeholder]="t.configs.searchPlaceholder" />
               </span>
-              
+
               <div class="filter-section">
-                <p-multiSelect 
-                  [options]="categoryOptions" 
+                <!-- Category filter -->
+                <p-multiSelect
+                  [options]="categoryOptions"
                   [(ngModel)]="selectedCategories"
                   (ngModelChange)="onFilterChange()"
-                  placeholder="Filtra per Categoria"
+                  [placeholder]="t.configs.filterByCategory"
                   [showClear]="true"
                   [maxSelectedLabels]="2"
-                  selectedItemsLabel="{0} categorie selezionate"
+                  [selectedItemsLabel]="t.configs.categoriesSelected"
                   styleClass="mr-2"
                   display="chip">
                   <ng-template let-value pTemplate="selectedItems">
@@ -105,19 +116,19 @@ interface ExtendedConfigEntry extends ConfigEntry {
                       </div>
                       <span *ngIf="value.length > 2" class="more-label">+{{ value.length - 2 }}</span>
                     </div>
-                    <span *ngIf="!value || value.length === 0">Filtra per Categoria</span>
+                    <span *ngIf="!value || value.length === 0">{{ t.configs.filterByCategory }}</span>
                   </ng-template>
                 </p-multiSelect>
-                
 
-                <p-multiSelect 
-                  [options]="environmentOptions" 
+                <!-- Environment filter -->
+                <p-multiSelect
+                  [options]="environmentOptions"
                   [(ngModel)]="selectedEnvironments"
                   (ngModelChange)="onFilterChange()"
-                  placeholder="Filtra per Ambiente"
+                  [placeholder]="t.configs.filterByEnvironment"
                   [showClear]="true"
                   [maxSelectedLabels]="2"
-                  selectedItemsLabel="{0} ambienti selezionati"
+                  [selectedItemsLabel]="t.configs.environmentsSelected"
                   display="chip">
                   <ng-template let-value pTemplate="selectedItems">
                     <div class="flex align-items-center gap-2" *ngIf="value && value.length > 0">
@@ -126,74 +137,66 @@ interface ExtendedConfigEntry extends ConfigEntry {
                       </div>
                       <span *ngIf="value.length > 2" class="more-label">+{{ value.length - 2 }}</span>
                     </div>
-                    <span *ngIf="!value || value.length === 0">Filtra per Ambiente</span>
+                    <span *ngIf="!value || value.length === 0">{{ t.configs.filterByEnvironment }}</span>
                   </ng-template>
                 </p-multiSelect>
 
-                <p-button 
-                  icon="pi pi-download" 
-                  label="Esporta CSV"
+                <!-- Export CSV -->
+                <p-button
+                  icon="pi pi-download"
+                  [label]="t.configs.exportCsv"
                   (onClick)="exportFilteredDataToCSV()"
                   severity="success"
                   [outlined]="true"
                   styleClass="ml-2"
-                  pTooltip="Esporta i dati filtrati in CSV">
+                  [pTooltip]="t.configs.exportCsvTooltip">
                 </p-button>
-
-
               </div>
             </div>
           </ng-template>
 
+          <!-- Column Headers -->
           <ng-template pTemplate="header">
             <tr>
-              <th pSortableColumn="key">
-                Chiave <p-sortIcon field="key"></p-sortIcon>
-              </th>
-              <th>Valore</th>
-              <th pSortableColumn="category">
-                Categoria <p-sortIcon field="category"></p-sortIcon>
-              </th>
-              <th pSortableColumn="environment">
-                Ambiente <p-sortIcon field="environment"></p-sortIcon>
-              </th>
-              <th pSortableColumn="created_at">
-                Creazione <p-sortIcon field="created_at"></p-sortIcon>
-              </th>
-              <th pSortableColumn="updated_at">
-                Modifica <p-sortIcon field="updated_at"></p-sortIcon>
-              </th>
-              <th class="actions-column">Azioni</th>
+              <th pSortableColumn="key">{{ t.configs.colKey }} <p-sortIcon field="key"></p-sortIcon></th>
+              <th>{{ t.configs.colValue }}</th>
+              <th pSortableColumn="category">{{ t.configs.colCategory }} <p-sortIcon field="category"></p-sortIcon></th>
+              <th pSortableColumn="environment">{{ t.configs.colEnvironment }} <p-sortIcon field="environment"></p-sortIcon></th>
+              <th pSortableColumn="created_at">{{ t.configs.colCreated }} <p-sortIcon field="created_at"></p-sortIcon></th>
+              <th pSortableColumn="updated_at">{{ t.configs.colUpdated }} <p-sortIcon field="updated_at"></p-sortIcon></th>
+              <th class="actions-column">{{ t.configs.colActions }}</th>
             </tr>
           </ng-template>
 
+          <!-- Paginator Left -->
           <ng-template pTemplate="paginatorleft">
             <div class="paginator-info">
               <i class="pi pi-list"></i>
-              <span>Totale: <strong>{{ configs.length }}</strong> configurazioni</span>
-            </div>
-          </ng-template>
-          <ng-template pTemplate="paginatorright">
-            <div class="paginator-info">
-              <i class="pi pi-eye"></i>
-              <span>Visualizzate: <strong>{{ dt.first + 1 }}-{{ Math.min(dt.first + dt.rows, configs.length) }}</strong></span>
+              <span>{{ t.configs.total }}: <strong>{{ configs.length }}</strong> {{ t.configs.totalConfigs }}</span>
             </div>
           </ng-template>
 
+          <!-- Paginator Right -->
+          <ng-template pTemplate="paginatorright">
+            <div class="paginator-info">
+              <i class="pi pi-eye"></i>
+              <span>{{ t.configs.showing }}: <strong>{{ dt.first + 1 }}-{{ Math.min(dt.first + dt.rows, configs.length) }}</strong></span>
+            </div>
+          </ng-template>
+
+          <!-- Body -->
           <ng-template pTemplate="body" let-config>
             <tr>
               <td>
                 <strong class="key-text">{{ config.key }}</strong>
               </td>
               <td>
-                <div class="value-preview">
-                  {{ formatValue(config.value) }}
-                </div>
+                <div class="value-preview">{{ formatValue(config.value) }}</div>
               </td>
               <td>
                 <div *ngIf="config.category" class="hierarchical-tags">
                   <ng-container *ngFor="let part of splitCategory(config.category); let i = index">
-                    <span 
+                    <span
                       class="custom-tag"
                       [class.hierarchical-parent]="i === 0"
                       [class.hierarchical-child]="i > 0"
@@ -201,15 +204,15 @@ interface ExtendedConfigEntry extends ConfigEntry {
                       [style.color]="getTextColor(getColorForHierarchy(config.category, i))">
                       {{ part }}
                     </span>
-                    <i *ngIf="i < splitCategory(config.category).length - 1" 
+                    <i *ngIf="i < splitCategory(config.category).length - 1"
                        class="pi pi-angle-right hierarchy-separator"></i>
                   </ng-container>
                 </div>
                 <span *ngIf="!config.category" class="text-muted">-</span>
               </td>
               <td>
-                <span 
-                  *ngIf="config.environment" 
+                <span
+                  *ngIf="config.environment"
                   class="custom-tag"
                   [style.background-color]="getColorForValue(config.environment)"
                   [style.color]="getTextColor(getColorForValue(config.environment))">
@@ -222,151 +225,121 @@ interface ExtendedConfigEntry extends ConfigEntry {
                   <i class="pi pi-calendar-plus"></i>
                   {{ formatDate(getCreatedAt(config)) }}
                 </span>
-                <span *ngIf="!getCreatedAt(config)" class="text-muted">-</span>
               </td>
               <td>
-                <span class="date-text" *ngIf="getUpdatedAt(config)">
+                <span class="date-text" *ngIf="config.updated_at">
                   <i class="pi pi-calendar"></i>
-                  {{ formatDate(getUpdatedAt(config)) }}
+                  {{ formatDate(config.updated_at) }}
                 </span>
-                <span *ngIf="!getUpdatedAt(config)" class="text-muted">-</span>
               </td>
               <td class="actions-column">
-                <p-button 
-                  icon="pi pi-eye" 
-                  [rounded]="true" 
-                  [text]="true" 
-                  severity="info"
-                  (onClick)="viewConfig(config)"
-                  pTooltip="Visualizza">
-                </p-button>
-                <p-button 
-                  icon="pi pi-pencil" 
-                  [rounded]="true" 
-                  [text]="true" 
-                  severity="success"
-                  (onClick)="editConfig(config)"
-                  pTooltip="Modifica">
-                </p-button>
-                <p-button 
-                  icon="pi pi-trash" 
-                  [rounded]="true" 
-                  [text]="true" 
-                  severity="danger"
-                  (onClick)="deleteConfig(config)"
-                  pTooltip="Elimina">
-                </p-button>
-              </td>
-            </tr>
-          </ng-template>
-
-          <ng-template pTemplate="emptymessage">
-            <tr>
-              <td colspan="7" class="text-center">
-                Nessuna configurazione trovata
+                <p-button icon="pi pi-eye"    [text]="true" [rounded]="true" severity="info"    (onClick)="viewConfig(config)"></p-button>
+                <p-button icon="pi pi-pencil" [text]="true" [rounded]="true" severity="warning" (onClick)="editConfig(config)"></p-button>
+                <p-button icon="pi pi-trash"  [text]="true" [rounded]="true" severity="danger"  (onClick)="deleteConfig(config)"></p-button>
               </td>
             </tr>
           </ng-template>
         </p-table>
       </div>
 
-      <!-- DIALOG RIMANGONO IDENTICI ... -->
-      <p-dialog 
-        [(visible)]="displayDialog" 
-        [header]="dialogMode === 'create' ? 'Nuova Configurazione' : 'Modifica Configurazione'"
+      <!-- ── Create / Edit Dialog ── -->
+      <p-dialog
+        [(visible)]="displayDialog"
+        [header]="dialogMode === 'create' ? t.configs.newConfigTitle : t.configs.editConfigTitle"
         [modal]="true"
         [style]="{ width: '50vw' }"
         [breakpoints]="{ '960px': '75vw', '640px': '90vw' }">
-        
+
         <div class="form-container">
           <div class="field">
-            <label for="key">Chiave *</label>
-            <input 
-              id="key" 
-              type="text" 
-              pInputText 
+            <label for="key">{{ t.configs.fieldKey }}</label>
+            <input
+              id="key"
+              type="text"
+              pInputText
               [(ngModel)]="currentConfig.key"
               [disabled]="dialogMode === 'edit'"
               class="w-full" />
           </div>
 
           <div class="field">
-            <label for="value">Valore * (JSON)</label>
-            <textarea 
-              id="value" 
-              pInputTextarea 
+            <label for="value">{{ t.configs.fieldValue }}</label>
+            <textarea
+              id="value"
+              pInputTextarea
               [(ngModel)]="currentConfigValueString"
               [rows]="8"
               class="w-full"
-              placeholder='Es: {"host": "localhost", "port": 5432} o "stringa" o 123 o true'>
+              [placeholder]="t.configs.fieldValuePlaceholder">
             </textarea>
-            <small class="text-muted">Inserisci un valore JSON valido</small>
+            <small class="text-muted">{{ t.configs.fieldValueHint }}</small>
           </div>
 
           <div class="field">
-            <label for="category">Categoria</label>
-            <input 
-              id="category" 
-              type="text" 
-              pInputText 
+            <label for="category">{{ t.configs.fieldCategory }}</label>
+            <input
+              id="category"
+              type="text"
+              pInputText
               [(ngModel)]="currentConfig.category"
               class="w-full"
-              placeholder="Es: STORAGE oppure LOGGING/DR" />
-            <small class="text-muted">Usa / o \ per creare gerarchie (es: PARENT/CHILD)</small>
+              [placeholder]="t.configs.fieldCategoryPlaceholder" />
+            <small class="text-muted">{{ t.configs.fieldCategoryHint }}</small>
           </div>
 
           <div class="field">
-            <label for="environment">Ambiente</label>
-            <p-dropdown 
+            <label for="environment">{{ t.configs.fieldEnvironment }}</label>
+            <p-dropdown
               id="environment"
               [options]="environmentDropdownOptions"
               [(ngModel)]="currentConfig.environment"
               [editable]="true"
-              placeholder="Seleziona o inserisci"
+              [placeholder]="t.configs.fieldEnvironmentPlaceholder"
               class="w-full">
             </p-dropdown>
           </div>
         </div>
 
         <ng-template pTemplate="footer">
-          <p-button 
-            label="Annulla" 
-            icon="pi pi-times" 
-            [text]="true" 
+          <p-button
+            [label]="t.configs.btnCancel"
+            icon="pi pi-times"
+            [text]="true"
             (onClick)="displayDialog = false">
           </p-button>
-          <p-button 
-            [label]="dialogMode === 'create' ? 'Crea' : 'Salva'" 
-            icon="pi pi-check" 
+          <p-button
+            [label]="dialogMode === 'create' ? t.configs.btnCreate : t.configs.btnSave"
+            icon="pi pi-check"
             (onClick)="saveConfig()">
           </p-button>
         </ng-template>
       </p-dialog>
 
-      <p-dialog 
-        [(visible)]="displayViewDialog" 
-        header="Dettagli Configurazione"
+      <!-- ── View Dialog ── -->
+      <p-dialog
+        [(visible)]="displayViewDialog"
+        [header]="t.configs.viewTitle"
         [modal]="true"
         [style]="{ width: '60vw' }"
         [breakpoints]="{ '960px': '75vw', '640px': '90vw' }">
-        
+
         <div class="view-container" *ngIf="viewingConfig">
           <div class="view-grid">
             <div class="view-field">
-              <strong>Chiave:</strong>
+              <strong>{{ t.configs.viewKey }}</strong>
               <span class="view-value">{{ viewingConfig.key }}</span>
             </div>
 
             <div class="view-field" *ngIf="viewingConfig.id">
-              <strong>ID:</strong>
+              <strong>{{ t.configs.viewId }}</strong>
               <span class="view-value">{{ viewingConfig.id }}</span>
             </div>
 
             <div class="view-field" *ngIf="viewingConfig.category">
-              <strong>Categoria:</strong>
+              <strong>{{ t.configs.viewCategory }}</strong>
               <div class="hierarchical-tags-large">
                 <ng-container *ngFor="let part of splitCategory(viewingConfig.category); let i = index">
-                  <span 
+                  <span
                     class="custom-tag-large"
                     [class.hierarchical-parent]="i === 0"
                     [class.hierarchical-child]="i > 0"
@@ -374,15 +347,15 @@ interface ExtendedConfigEntry extends ConfigEntry {
                     [style.color]="getTextColor(getColorForHierarchy(viewingConfig.category, i))">
                     {{ part }}
                   </span>
-                  <i *ngIf="i < splitCategory(viewingConfig.category).length - 1" 
+                  <i *ngIf="i < splitCategory(viewingConfig.category).length - 1"
                      class="pi pi-angle-right hierarchy-separator-large"></i>
                 </ng-container>
               </div>
             </div>
 
             <div class="view-field" *ngIf="viewingConfig.environment">
-              <strong>Ambiente:</strong>
-              <span 
+              <strong>{{ t.configs.viewEnvironment }}</strong>
+              <span
                 class="custom-tag-large"
                 [style.background-color]="getColorForValue(viewingConfig.environment)"
                 [style.color]="getTextColor(getColorForValue(viewingConfig.environment))">
@@ -391,36 +364,29 @@ interface ExtendedConfigEntry extends ConfigEntry {
             </div>
 
             <div class="view-field" *ngIf="getCreatedAt(viewingConfig)">
-              <strong>Data Creazione:</strong>
+              <strong>{{ t.configs.viewCreated }}</strong>
               <span class="view-value">
                 <i class="pi pi-calendar-plus"></i>
                 {{ formatDateLong(getCreatedAt(viewingConfig)) }}
               </span>
             </div>
 
-            <div class="view-field" *ngIf="getUpdatedAt(viewingConfig)">
-              <strong>Ultima Modifica:</strong>
+            <div class="view-field" *ngIf="viewingConfig.updated_at">
+              <strong>{{ t.configs.viewUpdated }}</strong>
               <span class="view-value">
                 <i class="pi pi-calendar"></i>
-                {{ formatDateLong(getUpdatedAt(viewingConfig)) }}
+                {{ formatDateLong(viewingConfig.updated_at) }}
               </span>
             </div>
           </div>
 
           <div class="view-field-full">
-            <strong>Valore:</strong>
+            <strong>{{ t.configs.viewValue }}</strong>
             <pre class="value-display">{{ formatValuePretty(viewingConfig.value) }}</pre>
           </div>
         </div>
-
-        <ng-template pTemplate="footer">
-          <p-button 
-            label="Chiudi" 
-            icon="pi pi-times" 
-            (onClick)="displayViewDialog = false">
-          </p-button>
-        </ng-template>
       </p-dialog>
+
     </div>
   `,
   styles: [`
@@ -1188,199 +1154,140 @@ interface ExtendedConfigEntry extends ConfigEntry {
     }
   `]
 })
-export class ConfigListComponent implements OnInit {
+export class ConfigListComponent implements OnInit, OnDestroy {
   @ViewChild('dt') table!: Table;
-  Math = Math;
-  configs: ExtendedConfigEntry[] = [];
-  categories: string[] = [];
-  environments: string[] = [];
-  categoryOptions: Array<{ label: string; value: string }> = [];
-  environmentOptions: Array<{ label: string; value: string }> = [];
-  environmentDropdownOptions: Array<{ label: string; value: string }> = [
-    { label: 'Development', value: 'development' },
-    { label: 'Staging', value: 'staging' },
-    { label: 'Production', value: 'production' }
-  ];
-  filteredConfigs: any[] = [];
 
-  loading = false;
-  selectedCategories: string[] = [];  // ✅ MODIFICATO: Array invece di string
+  configs:              ExtendedConfigEntry[] = [];
+  filteredConfigs:      ExtendedConfigEntry[] = [];
+  loading               = false;
+  categories:           string[] = [];
+  environments:         string[] = [];
+  categoryOptions:      { label: string; value: string }[] = [];
+  environmentOptions:   { label: string; value: string }[] = [];
+  environmentDropdownOptions: { label: string; value: string }[] = [];
+  selectedCategories:   string[] = [];
   selectedEnvironments: string[] = [];
 
-  displayDialog = false;
+  displayDialog     = false;
   displayViewDialog = false;
-  dialogMode: 'create' | 'edit' = 'create';
+  dialogMode:         'create' | 'edit' = 'create';
+  currentConfig:      Partial<ConfigEntry> = {};
+  currentConfigValueString = '""';
+  originalEnvironment      = '';
+  viewingConfig:      ExtendedConfigEntry | null = null;
 
-  currentConfig: Partial<ConfigEntry> = {};
-  currentConfigValueString = '';
-  viewingConfig: ExtendedConfigEntry | null = null;
+  t!: Translations;
+  Math = Math;
 
-  private originalEnvironment: string = '';
+  private langSub!: Subscription;
 
   constructor(
-    private oscService: OpenSecureConfService,
+    private oscService:        OpenSecureConfService,
     private confirmationService: ConfirmationService,
-    private messageService: MessageService
-  ) { }
+    private messageService:    MessageService,
+    private langService:       LanguageService,
+  ) {}
 
   ngOnInit() {
+    this.t = this.langService.getTranslations();
+    this.langSub = this.langService.lang$.subscribe((lang: Language) => {
+      this.t = this.langService.t(lang);
+    });
+
     this.loadConfigs();
     this.loadFilters();
   }
 
-  splitCategory(category: string): string[] {
-    if (!category) return [];
-    const parts = category.split(/[\\\/]/).map(part => part.trim()).filter(part => part.length > 0);
-    return parts.length > 0 ? parts : [category];
-  }
-  onTableFilter(event: any): void {
-    this.filteredConfigs = event.filteredValue || this.configs;
-  }
-  /**
-   * Genera colori contrastanti per ogni livello della gerarchia usando palette diverse
-   */
-  getColorForHierarchy(category: string, level: number): string {
-    if (!category) return '#6c757d';
-
-    // Palette di colori per ogni livello (0 = parent, 1 = child, 2 = grandchild, ecc.)
-    const levelPalettes = [
-      // Livello 0 (Parent) - Colori scuri e saturi
-      ['#667eea', '#f093fb', '#43e97b', '#feca57', '#ff6348', '#06b6d4', '#ec4899', '#10b981'],
-
-      // Livello 1 (Child) - Colori complementari
-      ['#4facfe', '#fa709a', '#22c55e', '#fdcb6e', '#ef4444', '#00d2d3', '#764ba2', '#14b8a6'],
-
-      // Livello 2 (Grandchild) - Colori intermedi
-      ['#3b82f6', '#fd79a8', '#16a34a', '#f59e0b', '#dc2626', '#55efc4', '#a29bfe', '#1dd1a1'],
-
-      // Livello 3+ - Altri colori
-      ['#2563eb', '#f093fb', '#15803d', '#d97706', '#b91c1c', '#2dd4bf', '#6c5ce7', '#00b894']
-    ];
-
-    // Seleziona la palette per il livello corrente (ciclica se supera i livelli disponibili)
-    const palette = levelPalettes[level % levelPalettes.length];
-
-    // Genera un hash dalla categoria completa
-    let hash = 2166136261;
-    for (let i = 0; i < category.length; i++) {
-      hash ^= category.charCodeAt(i);
-      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
-    }
-    hash = hash >>> 0;
-
-    // Seleziona un colore dalla palette
-    const index = hash % palette.length;
-    return palette[index];
+  ngOnDestroy() {
+    this.langSub?.unsubscribe();
   }
 
-  getCreatedAt(config: any): string | null {
-    return config?.created_at || config?.createdAt || null;
-  }
-
-  getUpdatedAt(config: any): string | null {
-    return config?.updated_at || config?.updatedAt || null;
-  }
+  // ── Color helpers ─────────────────────────────────────────────────────────
 
   getColorForValue(value: string): string {
     if (!value) return '#6c757d';
-
     let hash = 2166136261;
     for (let i = 0; i < value.length; i++) {
       hash ^= value.charCodeAt(i);
       hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
     hash = hash >>> 0;
-
     const colors = [
-      '#667eea', '#4facfe', '#3b82f6', '#2563eb', '#1d4ed8', '#60a5fa', '#0ea5e9', '#06b6d4',
-      '#43e97b', '#22c55e', '#16a34a', '#15803d', '#10b981', '#14b8a6', '#1dd1a1', '#00b894',
-      '#5f27cd', '#6c5ce7', '#a29bfe', '#764ba2', '#f093fb', '#fa709a', '#fd79a8', '#ec4899',
-      '#feca57', '#fdcb6e', '#f59e0b', '#d97706', '#fb923c', '#f97316', '#ff6348', '#fbbf24',
-      '#ff7675', '#ef4444', '#dc2626', '#b91c1c',
-      '#00d2d3', '#55efc4', '#2dd4bf', '#14b8a6',
-      '#fab1a0', '#ffeaa7', '#dfe6e9', '#b2bec3'
+      '#667eea','#4facfe','#3b82f6','#2563eb','#1d4ed8','#60a5fa','#0ea5e9','#06b6d4',
+      '#43e97b','#22c55e','#16a34a','#15803d','#10b981','#14b8a6','#1dd1a1','#00b894',
+      '#5f27cd','#6c5ce7','#a29bfe','#764ba2','#f093fb','#fa709a','#fd79a8','#ec4899',
+      '#feca57','#fdcb6e','#f59e0b','#d97706','#fb923c','#f97316','#ff6348','#fbbf24',
+      '#ff7675','#ef4444','#dc2626','#b91c1c',
+      '#00d2d3','#55efc4','#2dd4bf','#14b8a6',
+      '#fab1a0','#ffeaa7','#dfe6e9','#b2bec3',
     ];
-
-    const index = hash % colors.length;
-    return colors[index];
+    return colors[hash % colors.length];
   }
 
-  getTextColor(backgroundColor: string): string {
-    if (backgroundColor.startsWith('rgb')) {
-      const match = backgroundColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-      if (match) {
-        const r = parseInt(match[1]);
-        const g = parseInt(match[2]);
-        const b = parseInt(match[3]);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance > 0.5 ? '#000000' : '#ffffff';
-      }
-    }
+  getColorForHierarchy(category: string, level: number): string {
+    const base = this.getColorForValue(category);
+    if (level === 0) return base;
+    const hex = base.replace('#', '');
+    const r = Math.min(255, parseInt(hex.substring(0, 2), 16) + level * 30);
+    const g = Math.min(255, parseInt(hex.substring(2, 4), 16) + level * 30);
+    const b = Math.min(255, parseInt(hex.substring(4, 6), 16) + level * 30);
+    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  }
 
-    const hex = backgroundColor.replace('#', '');
+  getTextColor(bg: string): string {
+    const hex = bg.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
-
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance > 0.5 ? '#000000' : '#ffffff';
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? '#000000' : '#ffffff';
   }
- 
+
+  splitCategory(category: string): string[] {
+    return category ? category.split(/[/\\]/) : [];
+  }
+
+  getCreatedAt(config: ExtendedConfigEntry): string | null {
+    return (config as any).created_at ?? null;
+  }
+
+  // ── Data loading ──────────────────────────────────────────────────────────
+
   onFilterChange() {
-    // Piccolo delay per assicurarsi che il modello sia aggiornato
-    setTimeout(() => {
-      this.loadConfigs();
-    }, 0);
+    setTimeout(() => this.loadConfigs(), 0);
   }
 
   loadConfigs() {
     this.loading = true;
-
-    // Carica tutte le configurazioni e filtra lato client
     this.oscService.listConfigs({}).subscribe({
       next: (configs) => {
-        let filteredConfigs = configs as ExtendedConfigEntry[];
-
-        // Filtra per categorie se selezionate
-        if (this.selectedCategories && this.selectedCategories.length > 0) {
-          filteredConfigs = filteredConfigs.filter(config =>
-            this.selectedCategories.includes(config.category)
-          );
-        }
-
-        // Filtra per ambienti se selezionati
-        if (this.selectedEnvironments && this.selectedEnvironments.length > 0) {
-          filteredConfigs = filteredConfigs.filter(config =>
-            this.selectedEnvironments.includes(config.environment)
-          );
-        }
-
-        this.configs = filteredConfigs;
+        let filtered = configs as ExtendedConfigEntry[];
+        if (this.selectedCategories?.length)
+          filtered = filtered.filter(c => this.selectedCategories.includes(c.category));
+        if (this.selectedEnvironments?.length)
+          filtered = filtered.filter(c => this.selectedEnvironments.includes(c.environment));
+        this.configs = filtered;
         this.loading = false;
       },
-      error: (error) => {
-        console.error('Error loading configs:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Errore',
-          detail: 'Impossibile caricare le configurazioni'
-        });
+      error: () => {
+        this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: this.t.configs.toastLoadError });
         this.loading = false;
-      }
+      },
     });
   }
 
   loadFilters() {
     this.oscService.listCategories().subscribe(cats => {
       this.categories = cats;
-      this.categoryOptions = cats.map(cat => ({ label: cat, value: cat }));
+      this.categoryOptions = cats.map(c => ({ label: c, value: c }));
     });
-
     this.oscService.listEnvironments().subscribe(envs => {
       this.environments = envs;
-      this.environmentOptions = envs.map(env => ({ label: env, value: env }));
+      this.environmentOptions        = envs.map(e => ({ label: e, value: e }));
+      this.environmentDropdownOptions = envs.map(e => ({ label: e, value: e }));
     });
   }
+
+  // ── CRUD dialogs ──────────────────────────────────────────────────────────
 
   showCreateDialog() {
     this.dialogMode = 'create';
@@ -1405,79 +1312,66 @@ export class ConfigListComponent implements OnInit {
 
   saveConfig() {
     if (!this.currentConfig.key) {
-      this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'La chiave è obbligatoria' });
+      this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: this.t.configs.toastKeyRequired });
       return;
     }
-
     if (!this.currentConfig.environment) {
-      this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'L\'ambiente è obbligatorio' });
+      this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: this.t.configs.toastEnvRequired });
       return;
     }
 
     let value: any;
     try {
       value = JSON.parse(this.currentConfigValueString);
-    } catch (error) {
-      this.messageService.add({ severity: 'error', summary: 'Errore', detail: 'Il valore non è un JSON valido' });
+    } catch {
+      this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: this.t.configs.toastInvalidJson });
       return;
     }
 
     const operation = this.dialogMode === 'create'
-      ? this.oscService.createConfig(
-        this.currentConfig.key,
-        value,
-        this.currentConfig.environment,
-        this.currentConfig.category
-      )
-      : this.oscService.updateConfig(
-        this.currentConfig.key!,
-        this.originalEnvironment,
-        value,
-        this.currentConfig.category
-      );
+      ? this.oscService.createConfig(this.currentConfig.key, value, this.currentConfig.environment, this.currentConfig.category)
+      : this.oscService.updateConfig(this.currentConfig.key!, this.originalEnvironment, value, this.currentConfig.category);
 
     operation.subscribe({
       next: () => {
         this.messageService.add({
           severity: 'success',
-          summary: 'Successo',
-          detail: `Configurazione ${this.dialogMode === 'create' ? 'creata' : 'aggiornata'} con successo`
+          summary: this.t.configs.toastSuccessSummary,
+          detail: this.dialogMode === 'create' ? this.t.configs.toastCreated : this.t.configs.toastUpdated,
         });
         this.displayDialog = false;
         this.loadConfigs();
         this.loadFilters();
       },
-      error: (error) => {
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Errore',
-          detail: error.detail || 'Operazione fallita'
-        });
-      }
+      error: (err) => {
+        this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: err.detail || this.t.configs.toastOpFailed });
+      },
     });
   }
 
   deleteConfig(config: ConfigEntry) {
     this.confirmationService.confirm({
-      message: `Sei sicuro di voler eliminare la configurazione "${config.key}" dall'ambiente "${config.environment}"?`,
-      header: 'Conferma Eliminazione',
-      icon: 'pi pi-exclamation-triangle',
-      acceptLabel: 'Sì',
-      rejectLabel: 'No',
+      message: this.t.configs.deleteConfirmMsg.replace('{key}', config.key).replace('{env}', config.environment),
+      header:      this.t.configs.deleteConfirmHeader,
+      icon:        'pi pi-exclamation-triangle',
+      acceptLabel: this.t.configs.deleteYes,
+      rejectLabel: this.t.configs.deleteNo,
       accept: () => {
         this.oscService.deleteConfig(config.key, config.environment).subscribe({
           next: () => {
-            this.messageService.add({ severity: 'success', summary: 'Successo', detail: 'Configurazione eliminata' });
+            this.messageService.add({ severity: 'success', summary: this.t.configs.toastSuccessSummary, detail: this.t.configs.toastDeleted });
             this.loadConfigs();
             this.loadFilters();
           },
-          error: (error) => {
-            this.messageService.add({ severity: 'error', summary: 'Errore', detail: error.detail || 'Impossibile eliminare' });
-          }
+          error: (err) => {
+            this.messageService.add({ severity: 'error', summary: this.t.configs.toastErrorSummary, detail: err.detail || this.t.configs.toastDeleteError });
+          },
         });
-      }
+      },
     });
   }
+
+  // ── Formatting ────────────────────────────────────────────────────────────
 
   formatValue(value: any): string {
     return typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -1486,139 +1380,65 @@ export class ConfigListComponent implements OnInit {
   formatValuePretty(value: any): string {
     return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
   }
-  // Export personalizzato con tutti i dati filtrati
-  exportFilteredDataToCSV(): void {
-    // Usa i dati filtrati se disponibili, altrimenti tutti i dati
-    const dataToExport = this.filteredConfigs.length > 0 
-      ? this.filteredConfigs 
-      : this.configs;
-
-    if (!dataToExport || dataToExport.length === 0) {
-      console.warn('Nessun dato da esportare');
-      return;
-    }
-
-    // Definisci le colonne da esportare (escludi 'actions')
-    const columns = [
-      { field: 'key', header: 'Chiave' },
-      { field: 'value', header: 'Valore' },
-      { field: 'category', header: 'Categoria' },
-      { field: 'environment', header: 'Ambiente' },
-      { field: 'created_at', header: 'Data Creazione' },
-      { field: 'updated_at', header: 'Data Modifica' }
-    ];
-
-    // Crea l'intestazione CSV
-    const header = columns.map(col => col.header).join(',');
-
-    // Crea le righe CSV
-    const rows = dataToExport.map(config => {
-      return columns.map(col => {
-        let value = config[col.field];
-        
-        // Formatta le date
-        if ((col.field === 'created_at' || col.field === 'updated_at') && value) {
-          value = this.formatDate(value);
-        }
-        // Gestisci il campo 'value' che può essere di tipo complesso
-        else if (col.field === 'value') {
-          value = this.formatValueForCSV(value);
-        }
-        
-        // Gestisci valori null/undefined
-        if (value === null || value === undefined) {
-          value = '';
-        }
-        
-        // Converti tutto in stringa
-        value = String(value);
-        
-        // Escape per CSV: aggiungi virgolette se contiene virgole, newline o virgolette
-        if (value.includes(',') || value.includes('\n') || value.includes('"') || value.includes('\r')) {
-          // Escape delle virgolette doppie: " diventa ""
-          value = `"${value.replace(/"/g, '""')}"`;
-        }
-        
-        return value;
-      }).join(',');
-    });
-
-    // Combina intestazione e righe
-    const csvContent = [header, ...rows].join('\r\n');
-
-    // Aggiungi BOM UTF-8 per compatibilità Excel
-    const blob = new Blob(['\ufeff' + csvContent], { 
-      type: 'text/csv;charset=utf-8;' 
-    });
-
-    // Crea link per il download
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    
-    // Nome file con timestamp
-    const timestamp = new Date().toISOString().split('T')[0];
-    link.download = `configuration-${timestamp}.csv`;
-    
-    // Trigger download
-    link.click();
-    
-    // Cleanup
-    window.URL.revokeObjectURL(url);
-    link.remove();
-  }
-
-  /**
-   * Formatta il valore per l'export CSV gestendo tutti i tipi di dato
-   * @param value - Può essere dict, string, int, bool, o list
-   * @returns Stringa formattata per CSV
-   */
-  private formatValueForCSV(value: any): string {
-    // Gestisci null/undefined
-    if (value === null || value === undefined) {
-      return '';
-    }
-    
-    // Se è un oggetto (dict) o un array (list), serializza in JSON
-    if (typeof value === 'object') {
-      try {
-        // JSON.stringify formatta oggetti e array
-        return JSON.stringify(value);
-      } catch (error) {
-        console.error('Errore nella serializzazione JSON:', error);
-        return String(value);
-      }
-    }
-    
-    // Per tipi primitivi (string, number, boolean), converti in stringa
-    return String(value);
-  }
-
-
 
   formatDate(dateString: string | null): string {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('it-IT', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    return new Date(dateString).toLocaleDateString(this.langService.getCurrentLang(), {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   }
 
   formatDateLong(dateString: string | null): string {
     if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('it-IT', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+    return new Date(dateString).toLocaleString(this.langService.getCurrentLang(), {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
   }
- }
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
+
+  exportFilteredDataToCSV(): void {
+    const data = this.filteredConfigs.length > 0 ? this.filteredConfigs : this.configs;
+    if (!data?.length) return;
+
+    const columns = [
+      { field: 'key',        header: this.t.configs.colKey },
+      { field: 'value',      header: this.t.configs.colValue },
+      { field: 'category',   header: this.t.configs.colCategory },
+      { field: 'environment',header: this.t.configs.colEnvironment },
+      { field: 'created_at', header: this.t.configs.colCreated },
+      { field: 'updated_at', header: this.t.configs.colUpdated },
+    ];
+
+    const header = columns.map(c => c.header).join(',');
+    const rows = data.map(config =>
+      columns.map(col => {
+        let val = (config as any)[col.field];
+        if ((col.field === 'created_at' || col.field === 'updated_at') && val) val = this.formatDate(val);
+        else if (col.field === 'value') val = this.formatValueForCSV(val);
+        if (val == null) val = '';
+        val = String(val);
+        if (val.includes(',') || val.includes('\n') || val.includes('"')) val = `"${val.replace(/"/g, '""')}"`;
+        return val;
+      }).join(',')
+    );
+
+    const csv   = [header, ...rows].join('\r\n');
+    const blob  = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url   = window.URL.createObjectURL(blob);
+    const link  = document.createElement('a');
+    link.href   = url;
+    link.download = `configurations-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    link.remove();
+  }
+
+  private formatValueForCSV(value: any): string {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      try { return JSON.stringify(value); } catch { return String(value); }
+    }
+    return String(value);
+  }
+}

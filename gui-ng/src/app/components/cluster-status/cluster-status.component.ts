@@ -5,7 +5,10 @@ import { TableModule } from 'primeng/table';
 import { TagModule } from 'primeng/tag';
 import { ButtonModule } from 'primeng/button';
 import { TooltipModule } from 'primeng/tooltip';
+import { Subscription } from 'rxjs';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
+import { LanguageService } from '../../services/language.service';
+import { Language, Translations } from '../../i18n/translations';
 
 interface ClusterDistribution {
   cluster_mode: string;
@@ -38,14 +41,14 @@ interface HealthCheck {
       <div class="page-header">
         <div class="header-content">
           <div>
-            <h1><i class="pi pi-server"></i> Cluster Status</h1>
-            <p>Monitora lo stato del cluster OpenSecureConf</p>
+            <h1><i class="pi pi-server"></i> {{ t.cluster.title }}</h1>
+            <p>{{ t.cluster.subtitle }}</p>
           </div>
           <div class="header-right">
 
-            <!-- Countdown (solo se auto-refresh attivo) -->
+            <!-- Countdown -->
             <div class="refresh-countdown" *ngIf="autoRefresh && !loading">
-              <span class="countdown-label">Prossimo refresh</span>
+              <span class="countdown-label">{{ t.cluster.nextRefresh }}</span>
               <span class="countdown-value" [class.urgent]="countdown <= 5">{{ countdown }}s</span>
             </div>
 
@@ -54,15 +57,15 @@ interface HealthCheck {
               class="auto-refresh-toggle"
               [class.active]="autoRefresh"
               (click)="toggleAutoRefresh()"
-              [pTooltip]="autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh'"
+              [pTooltip]="autoRefresh ? t.cluster.disableAutoRefresh : t.cluster.enableAutoRefresh"
               tooltipPosition="bottom">
               <i [class]="autoRefresh ? 'pi pi-pause-circle' : 'pi pi-play-circle'"></i>
-              <span>Auto-refresh {{ autoRefresh ? 'ON' : 'OFF' }}</span>
+              <span>Auto-refresh {{ autoRefresh ? t.cluster.autoRefreshOn : t.cluster.autoRefreshOff }}</span>
             </button>
 
-            <!-- Aggiorna manuale -->
+            <!-- Manual refresh -->
             <p-button
-              label="Aggiorna"
+              [label]="t.cluster.refresh"
               icon="pi pi-refresh"
               (onClick)="loadClusterStatus()"
               [loading]="loading">
@@ -80,54 +83,56 @@ interface HealthCheck {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-sitemap"></i>
-                Informazioni Cluster
+                {{ t.cluster.clusterInfo }}
               </div>
             </ng-template>
             <div class="cluster-info-grid">
 
               <div class="info-item">
-                <span class="info-label">Modalità Cluster</span>
+                <span class="info-label">{{ t.cluster.clusterMode }}</span>
                 <span class="mode-badge" [class.replica]="clusterDistribution.cluster_mode === 'replica'">
                   {{ clusterDistribution.cluster_mode.toUpperCase() }}
                 </span>
               </div>
 
               <div class="info-item">
-                <span class="info-label">Tipo Nodo</span>
+                <span class="info-label">{{ t.cluster.nodeType }}</span>
                 <p-tag
-                  [value]="clusterDistribution.is_replica ? 'Replica' : 'Master'"
+                  [value]="clusterDistribution.is_replica ? t.cluster.nodeTypeReplica : t.cluster.nodeTypeMaster"
                   [severity]="clusterDistribution.is_replica ? 'info' : 'success'"
                   [rounded]="true">
                 </p-tag>
               </div>
 
               <div class="info-item">
-                <span class="info-label">Sincronizzazione</span>
+                <span class="info-label">{{ t.cluster.synchronization }}</span>
                 <p-tag
-                  [value]="clusterDistribution.all_nodes_synced ? 'Sincronizzati' : 'Non Sincronizzati'"
+                  [value]="clusterDistribution.all_nodes_synced ? t.cluster.syncOk : t.cluster.syncKo"
                   [severity]="clusterDistribution.all_nodes_synced ? 'success' : 'warning'"
                   [rounded]="true">
                 </p-tag>
               </div>
 
               <div class="info-item">
-                <span class="info-label">Totale Nodi</span>
+                <span class="info-label">{{ t.cluster.totalNodes }}</span>
                 <span class="info-value-large">{{ clusterDistribution.nodes_distribution.length }}</span>
-                <span class="info-sub">nel cluster</span>
+                <span class="info-sub">{{ t.cluster.inCluster }}</span>
               </div>
 
               <div class="info-item">
-                <span class="info-label">Nodi Attivi</span>
-                <span class="info-value-large" [class.all-healthy]="getHealthyNodesCount() === clusterDistribution.nodes_distribution.length" [class.some-down]="getHealthyNodesCount() < clusterDistribution.nodes_distribution.length">
+                <span class="info-label">{{ t.cluster.activeNodes }}</span>
+                <span class="info-value-large"
+                  [class.all-healthy]="getHealthyNodesCount() === clusterDistribution.nodes_distribution.length"
+                  [class.some-down]="getHealthyNodesCount() < clusterDistribution.nodes_distribution.length">
                   {{ getHealthyNodesCount() }}
                 </span>
-                <span class="info-sub">{{ getAvailabilityPct() }}% disponibilità</span>
+                <span class="info-sub">{{ getAvailabilityPct() }}% {{ t.cluster.availability }}</span>
               </div>
 
               <div class="info-item">
-                <span class="info-label">Totale Chiavi</span>
+                <span class="info-label">{{ t.cluster.totalKeys }}</span>
                 <span class="info-value-large">{{ getTotalKeys() | number }}</span>
-                <span class="info-sub">{{ clusterDistribution.nodes_distribution[0]?.keys_count | number }} per nodo</span>
+                <span class="info-sub">{{ clusterDistribution.nodes_distribution[0]?.keys_count | number }} {{ t.cluster.perNode }}</span>
               </div>
 
             </div>
@@ -140,13 +145,14 @@ interface HealthCheck {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-heart-fill"></i>
-                Health Check
+                {{ t.cluster.healthCheck }}
               </div>
             </ng-template>
+
             <div class="health-check" *ngIf="healthCheck">
 
               <div class="health-item">
-                <span class="health-label">Stato</span>
+                <span class="health-label">{{ t.cluster.status }}</span>
                 <p-tag
                   [value]="healthCheck.status"
                   [severity]="healthCheck.status === 'healthy' ? 'success' : 'danger'"
@@ -155,18 +161,19 @@ interface HealthCheck {
               </div>
 
               <div class="health-item">
-                <span class="health-label">Node ID</span>
+                <span class="health-label">{{ t.cluster.nodeId }}</span>
                 <span class="health-value mono">{{ healthCheck.node_id }}</span>
               </div>
 
               <div class="health-item" *ngIf="healthCheck.timestamp">
-                <span class="health-label">Ultimo Aggiornamento</span>
+                <span class="health-label">{{ t.cluster.lastUpdate }}</span>
                 <span class="health-value">{{ formatDate(healthCheck.timestamp) }}</span>
               </div>
 
             </div>
+
             <div class="health-empty" *ngIf="!healthCheck">
-              <i class="pi pi-spin pi-spinner"></i> Caricamento...
+              <i class="pi pi-spin pi-spinner"></i> {{ t.cluster.loading }}
             </div>
           </p-card>
         </div>
@@ -177,7 +184,7 @@ interface HealthCheck {
             <ng-template pTemplate="header">
               <div class="card-header-custom">
                 <i class="pi pi-sitemap"></i>
-                Distribuzione Nodi ({{ clusterDistribution.nodes_distribution.length }} nodi)
+                {{ t.cluster.nodesDistribution }} ({{ clusterDistribution.nodes_distribution.length }} {{ t.cluster.nodes }})
               </div>
             </ng-template>
 
@@ -188,31 +195,29 @@ interface HealthCheck {
 
               <ng-template pTemplate="header">
                 <tr>
-                  <th>Node ID</th>
-                  <th style="text-align:center">Locale</th>
-                  <th>Stato</th>
-                  <th>Chiavi</th>
-                  <th>Distribuzione chiavi</th>
+                  <th>{{ t.cluster.colNodeId }}</th>
+                  <th style="text-align:center">{{ t.cluster.colLocal }}</th>
+                  <th>{{ t.cluster.colStatus }}</th>
+                  <th>{{ t.cluster.colKeys }}</th>
+                  <th>{{ t.cluster.colKeysDist }}</th>
                 </tr>
               </ng-template>
 
               <ng-template pTemplate="body" let-node>
                 <tr [class.local-node]="node.is_local">
 
-                  <!-- Node ID -->
                   <td>
                     <div class="node-id-container">
                       <span class="node-id">{{ node.node_id }}</span>
                       <p-tag
                         *ngIf="node.is_local"
-                        value="LOCALE"
+                        [value]="t.cluster.nodeLocal"
                         severity="contrast"
                         [rounded]="true">
                       </p-tag>
                     </div>
                   </td>
 
-                  <!-- Locale icon -->
                   <td style="text-align:center">
                     <i
                       [class]="node.is_local ? 'pi pi-check-circle' : 'pi pi-circle'"
@@ -221,16 +226,14 @@ interface HealthCheck {
                     </i>
                   </td>
 
-                  <!-- Stato -->
                   <td>
                     <p-tag
-                      [value]="node.is_healthy ? 'Healthy' : 'Unhealthy'"
+                      [value]="node.is_healthy ? t.cluster.nodeHealthy : t.cluster.nodeUnhealthy"
                       [severity]="node.is_healthy ? 'success' : 'danger'"
                       [rounded]="true">
                     </p-tag>
                   </td>
 
-                  <!-- Chiavi -->
                   <td>
                     <span class="keys-count">
                       <i class="pi pi-key"></i>
@@ -238,14 +241,13 @@ interface HealthCheck {
                     </span>
                   </td>
 
-                  <!-- Barra distribuzione -->
                   <td>
                     <div class="dist-bar-wrap">
                       <div class="dist-bar-track">
                         <div
                           class="dist-bar-fill"
                           [style.width.%]="getPerformancePercentage(node.keys_count)"
-                          [style.background-color]="getPerformanceColor(node.keys_count)"> 
+                          [style.background-color]="getPerformanceColor(node.keys_count)">
                         </div>
                       </div>
                       <span class="dist-pct">{{ getPerformancePercentage(node.keys_count) | number:'1.0-0' }}%</span>
@@ -257,7 +259,7 @@ interface HealthCheck {
 
               <ng-template pTemplate="emptymessage">
                 <tr>
-                  <td colspan="5" class="text-center">Nessun nodo trovato</td>
+                  <td colspan="5" class="text-center">{{ t.cluster.noNodesFound }}</td>
                 </tr>
               </ng-template>
 
@@ -269,10 +271,8 @@ interface HealthCheck {
     </div>
   `,
   styles: [`
-    /* ── Layout ── */
     .cluster-status { animation: fadeInUp 0.4s ease-out; }
 
-    /* ── Page Header ── */
     .page-header {
       margin-bottom: 1.5rem;
       background: var(--card-bg);
@@ -326,7 +326,6 @@ interface HealthCheck {
     }
     .countdown-value.urgent { color: #ef4444; }
 
-    /* Auto-refresh toggle */
     .auto-refresh-toggle {
       display: inline-flex;
       align-items: center;
@@ -343,23 +342,11 @@ interface HealthCheck {
       box-shadow: 0 2px 8px rgba(0,0,0,0.25);
       white-space: nowrap;
     }
-    .auto-refresh-toggle:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-    .auto-refresh-toggle:active {
-      transform: translateY(0);
-    }
-    .auto-refresh-toggle.active {
-      background: #22c55e;
-      box-shadow: 0 2px 10px rgba(34, 197, 94, 0.4);
-    }
-    .auto-refresh-toggle.active:hover {
-      box-shadow: 0 4px 16px rgba(34, 197, 94, 0.5);
-    }
+    .auto-refresh-toggle:hover  { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+    .auto-refresh-toggle:active { transform: translateY(0); }
+    .auto-refresh-toggle.active { background: #22c55e; box-shadow: 0 2px 10px rgba(34,197,94,0.4); }
+    .auto-refresh-toggle.active:hover { box-shadow: 0 4px 16px rgba(34,197,94,0.5); }
 
-    /* Override PrimeNG p-button per stile pill */
     :host ::ng-deep .p-button {
       border-radius: 50px !important;
       font-weight: 600 !important;
@@ -367,16 +354,9 @@ interface HealthCheck {
       box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
       transition: filter 0.2s, transform 0.1s, box-shadow 0.2s !important;
     }
-    :host ::ng-deep .p-button:hover {
-      filter: brightness(1.1);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-    }
-    :host ::ng-deep .p-button:active {
-      transform: translateY(0);
-    }
+    :host ::ng-deep .p-button:hover  { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important; }
+    :host ::ng-deep .p-button:active { transform: translateY(0); }
 
-    /* ── Card Header ── */
     .card-header-custom {
       display: flex;
       align-items: center;
@@ -387,7 +367,6 @@ interface HealthCheck {
       border-bottom: 1px solid var(--border-color, rgba(0,0,0,0.08));
     }
 
-    /* ── Cluster Info Grid ── */
     .cluster-info-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -402,10 +381,7 @@ interface HealthCheck {
       border-radius: 12px;
       transition: transform 0.2s, background 0.2s;
     }
-    .info-item:hover {
-      background: var(--hover-bg);
-      transform: translateY(-2px);
-    }
+    .info-item:hover { background: var(--hover-bg); transform: translateY(-2px); }
     .info-label {
       font-size: 0.72rem;
       font-weight: 700;
@@ -420,13 +396,12 @@ interface HealthCheck {
       line-height: 1;
     }
     .info-value-large.all-healthy { color: #22c55e; }
-    .info-value-large.some-down  { color: #f59e0b; }
+    .info-value-large.some-down   { color: #f59e0b; }
     .info-sub {
       font-size: 0.78rem;
       color: var(--text-secondary);
     }
 
-    /* Mode badge */
     .mode-badge {
       display: inline-block;
       padding: 0.35rem 1rem;
@@ -434,17 +409,16 @@ interface HealthCheck {
       font-size: 0.85rem;
       font-weight: 700;
       letter-spacing: 0.06em;
-      background: rgba(108, 126, 234, 0.15);
+      background: rgba(108,126,234,0.15);
       color: #667eea;
-      border: 1px solid rgba(108, 126, 234, 0.35);
+      border: 1px solid rgba(108,126,234,0.35);
     }
     .mode-badge.replica {
-      background: rgba(59, 130, 246, 0.12);
+      background: rgba(59,130,246,0.12);
       color: #3b82f6;
-      border-color: rgba(59, 130, 246, 0.3);
+      border-color: rgba(59,130,246,0.3);
     }
 
-    /* ── Health Check ── */
     .health-check {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -479,12 +453,7 @@ interface HealthCheck {
       gap: 0.5rem;
     }
 
-    /* ── Table ── */
-    .node-id-container {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
+    .node-id-container { display: flex; align-items: center; gap: 0.5rem; }
     .node-id {
       font-family: 'Courier New', monospace;
       font-weight: 600;
@@ -504,43 +473,16 @@ interface HealthCheck {
     }
     .keys-count i { color: #667eea; }
 
-    /* Distribution bar */
-    .dist-bar-wrap {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-    }
-    .dist-bar-track {
-      flex: 1;
-      height: 10px;
-      background: var(--bg-secondary);
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .dist-bar-fill {
-      height: 100%;
-      background: #22c55e;
-      border-radius: 10px;
-      box-shadow: 0 0 6px rgba(34,197,94,0.5);
-      transition: width 0.5s ease;
-    }
-    .dist-pct {
-      min-width: 36px;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: #22c55e;
-      text-align: right;
-    }
+    .dist-bar-wrap { display: flex; align-items: center; gap: 0.6rem; }
+    .dist-bar-track { flex: 1; height: 10px; background: var(--bg-secondary); border-radius: 10px; overflow: hidden; }
+    .dist-bar-fill  { height: 100%; background: #22c55e; border-radius: 10px; box-shadow: 0 0 6px rgba(34,197,94,0.5); transition: width 0.5s ease; }
+    .dist-pct { min-width: 36px; font-size: 0.8rem; font-weight: 700; color: #22c55e; text-align: right; }
 
-    .text-center {
-      text-align: center;
-      padding: 2rem;
-      color: var(--text-secondary);
-    }
+    .text-center { text-align: center; padding: 2rem; color: var(--text-secondary); }
 
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(20px); }
-      to   { opacity: 1; transform: translateY(0); }
+      to   { opacity: 1; transform: translateY(0);    }
     }
   `]
 })
@@ -549,26 +491,37 @@ export class ClusterStatusComponent implements OnInit, OnDestroy {
   healthCheck: HealthCheck | null = null;
   loading = false;
 
-  countdown = 30;
+  countdown   = 30;
   autoRefresh = true;
-  private countdownInterval: any;
 
-  constructor(private oscService: OpenSecureConfService) {}
+  t!: Translations;
+
+  private countdownInterval: any;
+  private langSub!: Subscription;
+
+  constructor(
+    private oscService:  OpenSecureConfService,
+    private langService: LanguageService,
+  ) {}
 
   ngOnInit(): void {
+    this.t = this.langService.getTranslations();
+    this.langSub = this.langService.lang$.subscribe((lang: Language) => {
+      this.t = this.langService.t(lang);
+    });
+
     this.loadClusterStatus();
     this.startCountdown();
   }
 
   ngOnDestroy(): void {
     clearInterval(this.countdownInterval);
+    this.langSub?.unsubscribe();
   }
 
   toggleAutoRefresh(): void {
     this.autoRefresh = !this.autoRefresh;
-    if (this.autoRefresh) {
-      this.countdown = 30;
-    }
+    if (this.autoRefresh) this.countdown = 30;
   }
 
   private startCountdown(): void {
@@ -583,7 +536,7 @@ export class ClusterStatusComponent implements OnInit, OnDestroy {
   }
 
   loadClusterStatus(): void {
-    this.loading = true;
+    this.loading  = true;
     this.countdown = 30;
 
     this.oscService.healthCheck().subscribe({
@@ -605,7 +558,7 @@ export class ClusterStatusComponent implements OnInit, OnDestroy {
     });
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   getHealthyNodesCount(): number {
     return this.clusterDistribution?.nodes_distribution.filter(n => n.is_healthy).length ?? 0;
@@ -617,26 +570,26 @@ export class ClusterStatusComponent implements OnInit, OnDestroy {
     return total === 0 ? 0 : Math.round((this.getHealthyNodesCount() / total) * 100);
   }
 
-  /** Somma reale delle chiavi su tutti i nodi */
   getTotalKeys(): number {
     return this.clusterDistribution?.nodes_distribution.reduce((s, n) => s + n.keys_count, 0) ?? 0;
   }
 
-    /** Quota % di chiavi di un nodo rispetto al totale */
   getPerformancePercentage(keys: number): number {
     if (!this.clusterDistribution) return 0;
     const max = Math.max(...this.clusterDistribution.nodes_distribution.map(n => n.keys_count), 1);
     return (keys / max) * 100;
   }
+
   getPerformanceColor(keys: number): string {
-    const percentage = this.getPerformancePercentage(keys);
-    if (percentage >= 80) return '#22c55e';
-    if (percentage >= 50) return '#3b82f6';
-    if (percentage >= 20) return '#f59e0b';
+    const pct = this.getPerformancePercentage(keys);
+    if (pct >= 80) return '#22c55e';
+    if (pct >= 50) return '#3b82f6';
+    if (pct >= 20) return '#f59e0b';
     return '#6c757d';
   }
 
   formatDate(dateString: string): string {
-    return dateString ? new Date(dateString).toLocaleString('it-IT') : '-';
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleString(this.langService.getCurrentLang());
   }
 }

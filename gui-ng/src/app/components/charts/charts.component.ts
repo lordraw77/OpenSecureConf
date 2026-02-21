@@ -1,12 +1,14 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChartModule } from 'primeng/chart';
 import { CardModule } from 'primeng/card';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ButtonModule } from 'primeng/button';
 import { TooltipModule } from 'primeng/tooltip';
+import { Subscription } from 'rxjs';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
-import { forkJoin } from 'rxjs';
+import { LanguageService } from '../../services/language.service';
+import { Language, Translations } from '../../i18n/translations';
 
 interface ConfigEntry {
   key: string;
@@ -26,17 +28,17 @@ interface ConfigEntry {
         <div class="header-left">
           <h1>
             <i class="pi pi-chart-pie"></i>
-            Grafici
+            {{ t.charts.title }}
           </h1>
-          <p>Distribuzione visuale delle configurazioni per categoria e ambiente</p>
+          <p>{{ t.charts.subtitle }}</p>
         </div>
         <div class="header-actions">
           <p-button
             icon="pi pi-refresh"
-            label="Aggiorna"
+            [label]="t.charts.refresh"
             [outlined]="true"
             (onClick)="loadData()"
-            pTooltip="Ricarica i dati"
+            [pTooltip]="t.charts.refreshTooltip"
             tooltipPosition="left">
           </p-button>
         </div>
@@ -48,28 +50,28 @@ interface ConfigEntry {
           <div class="kpi-icon"><i class="pi pi-database"></i></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ totalConfigs }}</div>
-            <div class="kpi-label">Configurazioni Totali</div>
+            <div class="kpi-label">{{ t.charts.kpiTotalConfigs }}</div>
           </div>
         </div>
         <div class="kpi-card kpi-success">
           <div class="kpi-icon"><i class="pi pi-tag"></i></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ totalCategories }}</div>
-            <div class="kpi-label">Categorie Uniche</div>
+            <div class="kpi-label">{{ t.charts.kpiUniqueCategories }}</div>
           </div>
         </div>
         <div class="kpi-card kpi-info">
           <div class="kpi-icon"><i class="pi pi-sitemap"></i></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ totalEnvironments }}</div>
-            <div class="kpi-label">Ambienti Unici</div>
+            <div class="kpi-label">{{ t.charts.kpiUniqueEnvironments }}</div>
           </div>
         </div>
         <div class="kpi-card kpi-warn">
           <div class="kpi-icon"><i class="pi pi-exclamation-circle"></i></div>
           <div class="kpi-body">
             <div class="kpi-value">{{ uncategorized }}</div>
-            <div class="kpi-label">Senza Categoria</div>
+            <div class="kpi-label">{{ t.charts.kpiUncategorized }}</div>
           </div>
         </div>
       </div>
@@ -81,108 +83,82 @@ interface ConfigEntry {
         </div>
       </div>
 
-      <!-- Charts Row 1: Torte -->
+      <!-- Charts Row 1: Doughnut -->
       <div class="charts-grid">
 
-        <!-- PIE: Per Categoria -->
         <div class="chart-card">
           <div class="chart-card-header">
             <i class="pi pi-chart-pie"></i>
-            <span>Configurazioni per Categoria</span>
-            <span class="chart-count" *ngIf="!loading">{{ categoryData.length }} categorie</span>
+            <span>{{ t.charts.chartByCategory }}</span>
+            <span class="chart-count" *ngIf="!loading">{{ categoryData.length }} {{ t.charts.badgeCategories }}</span>
           </div>
           <div class="chart-wrapper" *ngIf="!loading && categoryChartData">
-            <p-chart
-              type="doughnut"
-              [data]="categoryChartData"
-              [options]="doughnutOptions"
-              [width]="'100%'"
-              height="320px">
-            </p-chart>
+            <p-chart type="doughnut" [data]="categoryChartData" [options]="doughnutOptions" [width]="'100%'" height="320px"></p-chart>
           </div>
           <div class="chart-wrapper" *ngIf="loading">
             <p-skeleton height="320px" borderRadius="12px"></p-skeleton>
           </div>
           <div class="chart-empty" *ngIf="!loading && !categoryChartData">
             <i class="pi pi-inbox"></i>
-            <p>Nessun dato disponibile</p>
+            <p>{{ t.charts.noData }}</p>
           </div>
         </div>
 
-        <!-- PIE: Per Ambiente -->
         <div class="chart-card">
           <div class="chart-card-header">
             <i class="pi pi-chart-pie"></i>
-            <span>Configurazioni per Ambiente</span>
-            <span class="chart-count" *ngIf="!loading">{{ environmentData.length }} ambienti</span>
+            <span>{{ t.charts.chartByEnvironment }}</span>
+            <span class="chart-count" *ngIf="!loading">{{ environmentData.length }} {{ t.charts.badgeEnvironments }}</span>
           </div>
           <div class="chart-wrapper" *ngIf="!loading && environmentChartData">
-            <p-chart
-              type="doughnut"
-              [data]="environmentChartData"
-              [options]="doughnutOptions"
-              [width]="'100%'"
-              height="320px">
-            </p-chart>
+            <p-chart type="doughnut" [data]="environmentChartData" [options]="doughnutOptions" [width]="'100%'" height="320px"></p-chart>
           </div>
           <div class="chart-wrapper" *ngIf="loading">
             <p-skeleton height="320px" borderRadius="12px"></p-skeleton>
           </div>
           <div class="chart-empty" *ngIf="!loading && !environmentChartData">
             <i class="pi pi-inbox"></i>
-            <p>Nessun dato disponibile</p>
+            <p>{{ t.charts.noData }}</p>
           </div>
         </div>
 
       </div>
 
-      <!-- Charts Row 2: Bar chart stacked -->
+      <!-- Charts Row 2: Stacked bar -->
       <div class="chart-card full-width">
         <div class="chart-card-header">
           <i class="pi pi-chart-bar"></i>
-          <span>Configurazioni per Ambiente e Categoria</span>
-          <span class="chart-count" *ngIf="!loading">distribuzione dettagliata</span>
+          <span>{{ t.charts.chartByEnvAndCat }}</span>
+          <span class="chart-count" *ngIf="!loading">{{ t.charts.badgeDetailed }}</span>
         </div>
         <div class="chart-wrapper" *ngIf="!loading && stackedBarData">
-          <p-chart
-            type="bar"
-            [data]="stackedBarData"
-            [options]="stackedBarOptions"
-            [width]="'100%'"
-            height="380px">
-          </p-chart>
+          <p-chart type="bar" [data]="stackedBarData" [options]="stackedBarOptions" [width]="'100%'" height="380px"></p-chart>
         </div>
         <div class="chart-wrapper" *ngIf="loading">
           <p-skeleton height="380px" borderRadius="12px"></p-skeleton>
         </div>
         <div class="chart-empty" *ngIf="!loading && !stackedBarData">
           <i class="pi pi-inbox"></i>
-          <p>Nessun dato disponibile</p>
+          <p>{{ t.charts.noData }}</p>
         </div>
       </div>
 
-      <!-- Charts Row 3: Horizontal bar per categoria (top N) -->
+      <!-- Charts Row 3: Horizontal bar -->
       <div class="chart-card full-width">
         <div class="chart-card-header">
           <i class="pi pi-sort-amount-down"></i>
-          <span>Top Categorie per Numero di Configurazioni</span>
-          <span class="chart-count" *ngIf="!loading">ordinate per conteggio</span>
+          <span>{{ t.charts.chartTopCategories }}</span>
+          <span class="chart-count" *ngIf="!loading">{{ t.charts.badgeSortedByCount }}</span>
         </div>
         <div class="chart-wrapper" *ngIf="!loading && horizontalBarData">
-          <p-chart
-            type="bar"
-            [data]="horizontalBarData"
-            [options]="horizontalBarOptions"
-            [width]="'100%'"
-            height="350px">
-          </p-chart>
+          <p-chart type="bar" [data]="horizontalBarData" [options]="horizontalBarOptions" [width]="'100%'" height="350px"></p-chart>
         </div>
         <div class="chart-wrapper" *ngIf="loading">
           <p-skeleton height="350px" borderRadius="12px"></p-skeleton>
         </div>
         <div class="chart-empty" *ngIf="!loading && !horizontalBarData">
           <i class="pi pi-inbox"></i>
-          <p>Nessun dato disponibile</p>
+          <p>{{ t.charts.noData }}</p>
         </div>
       </div>
 
@@ -196,7 +172,7 @@ interface ConfigEntry {
 
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
+      to   { opacity: 1; transform: translateY(0);    }
     }
 
     .page-header {
@@ -241,13 +217,8 @@ interface ConfigEntry {
       margin-bottom: 2rem;
     }
 
-    @media (max-width: 900px) {
-      .kpi-row { grid-template-columns: repeat(2, 1fr); }
-    }
-
-    @media (max-width: 500px) {
-      .kpi-row { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .kpi-row { grid-template-columns: 1fr; } }
 
     .kpi-card {
       background: var(--card-bg);
@@ -261,10 +232,7 @@ interface ConfigEntry {
       transition: all 0.3s;
     }
 
-    .kpi-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 30px var(--shadow-md);
-    }
+    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 8px 30px var(--shadow-md); }
 
     .kpi-primary { border-left-color: #667eea; }
     .kpi-success { border-left-color: #22c55e; }
@@ -288,21 +256,10 @@ interface ConfigEntry {
     .kpi-info    .kpi-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); }
     .kpi-warn    .kpi-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
 
-    .kpi-value {
-      font-size: 2.2rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      line-height: 1;
-      margin-bottom: 0.25rem;
-    }
+    .kpi-value { font-size: 2.2rem; font-weight: 700; color: var(--text-primary); line-height: 1; margin-bottom: 0.25rem; }
+    .kpi-label { font-size: 0.875rem; color: var(--text-secondary); font-weight: 500; }
 
-    .kpi-label {
-      font-size: 0.875rem;
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-
-    /* Charts grid */
+    /* Charts */
     .charts-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -310,9 +267,7 @@ interface ConfigEntry {
       margin-bottom: 1.5rem;
     }
 
-    @media (max-width: 900px) {
-      .charts-grid { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
 
     .chart-card {
       background: var(--card-bg);
@@ -322,13 +277,9 @@ interface ConfigEntry {
       transition: box-shadow 0.3s;
     }
 
-    .chart-card:hover {
-      box-shadow: 0 8px 30px var(--shadow-md);
-    }
+    .chart-card:hover { box-shadow: 0 8px 30px var(--shadow-md); }
 
-    .chart-card.full-width {
-      margin-bottom: 1.5rem;
-    }
+    .chart-card.full-width { margin-bottom: 1.5rem; }
 
     .chart-card-header {
       display: flex;
@@ -342,10 +293,7 @@ interface ConfigEntry {
       border-bottom: 1px solid var(--border-color);
     }
 
-    .chart-card-header i {
-      color: #667eea;
-      font-size: 1.25rem;
-    }
+    .chart-card-header i { color: #667eea; font-size: 1.25rem; }
 
     .chart-count {
       margin-left: auto;
@@ -357,10 +305,7 @@ interface ConfigEntry {
       font-weight: 500;
     }
 
-    .chart-wrapper {
-      display: flex;
-      justify-content: center;
-    }
+    .chart-wrapper { display: flex; justify-content: center; }
 
     .chart-empty {
       display: flex;
@@ -371,55 +316,74 @@ interface ConfigEntry {
       color: var(--text-secondary);
     }
 
-    .chart-empty i {
-      font-size: 2.5rem;
-      margin-bottom: 0.75rem;
-      color: var(--text-tertiary);
-    }
+    .chart-empty i { font-size: 2.5rem; margin-bottom: 0.75rem; color: var(--text-tertiary); }
   `]
 })
-export class ChartsComponent implements OnInit {
+export class ChartsComponent implements OnInit, OnDestroy {
 
   loading = false;
 
-  totalConfigs = 0;
-  totalCategories = 0;
+  totalConfigs      = 0;
+  totalCategories   = 0;
   totalEnvironments = 0;
-  uncategorized = 0;
+  uncategorized     = 0;
 
-  categoryData: { label: string; count: number }[] = [];
+  categoryData:    { label: string; count: number }[] = [];
   environmentData: { label: string; count: number }[] = [];
 
-  categoryChartData: any = null;
+  categoryChartData:    any = null;
   environmentChartData: any = null;
-  stackedBarData: any = null;
-  horizontalBarData: any = null;
+  stackedBarData:       any = null;
+  horizontalBarData:    any = null;
 
-  doughnutOptions: any;
-  stackedBarOptions: any;
+  doughnutOptions:      any;
+  stackedBarOptions:    any;
   horizontalBarOptions: any;
+
+  t!: Translations;
+  private langSub!: Subscription;
+  private cachedConfigs: any[] = [];
 
   private readonly PALETTE = [
     '#667eea', '#43e97b', '#f093fb', '#feca57', '#ff6348',
     '#06b6d4', '#ec4899', '#10b981', '#f59e0b', '#3b82f6',
     '#a78bfa', '#34d399', '#fb923c', '#60a5fa', '#e879f9',
-    '#4ade80', '#facc15', '#38bdf8', '#c084fc', '#f87171'
+    '#4ade80', '#facc15', '#38bdf8', '#c084fc', '#f87171',
   ];
 
-  constructor(private oscService: OpenSecureConfService) {}
+  constructor(
+    private oscService:  OpenSecureConfService,
+    private langService: LanguageService,
+  ) {}
 
   ngOnInit() {
+    this.t = this.langService.getTranslations();
+    this.langSub = this.langService.lang$.subscribe((lang: Language) => {
+      this.t = this.langService.t(lang);
+      // Rebuild charts so labels/tooltips update immediately
+      if (this.cachedConfigs.length) {
+        this.buildAllCharts(this.cachedConfigs);
+      }
+      this.initChartOptions();
+    });
+
     this.initChartOptions();
     this.loadData();
   }
 
+  ngOnDestroy() {
+    this.langSub?.unsubscribe();
+  }
+
   initChartOptions() {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
-      || document.body.classList.contains('dark-mode')
-      || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark =
+      document.documentElement.getAttribute('data-theme') === 'dark' ||
+      document.body.classList.contains('dark-mode') ||
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
 
     const textColor = isDark ? '#e2e8f0' : '#334155';
     const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    const tooltipLabel = this.t?.charts?.tooltipConfigs ?? 'configurations';
 
     this.doughnutOptions = {
       responsive: true,
@@ -432,20 +396,20 @@ export class ChartsComponent implements OnInit {
             padding: 16,
             font: { size: 13 },
             usePointStyle: true,
-            pointStyle: 'circle'
-          }
+            pointStyle: 'circle',
+          },
         },
         tooltip: {
           callbacks: {
             label: (ctx: any) => {
               const total = ctx.dataset.data.reduce((a: number, b: number) => a + b, 0);
-              const pct = ((ctx.parsed / total) * 100).toFixed(1);
+              const pct   = ((ctx.parsed / total) * 100).toFixed(1);
               return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
-            }
-          }
-        }
+            },
+          },
+        },
       },
-      cutout: '60%'
+      cutout: '60%',
     };
 
     this.stackedBarOptions = {
@@ -454,22 +418,14 @@ export class ChartsComponent implements OnInit {
       plugins: {
         legend: {
           position: 'top',
-          labels: { color: textColor, font: { size: 12 }, usePointStyle: true }
+          labels: { color: textColor, font: { size: 12 }, usePointStyle: true },
         },
-        tooltip: { mode: 'index', intersect: false }
+        tooltip: { mode: 'index', intersect: false },
       },
       scales: {
-        x: {
-          stacked: true,
-          ticks: { color: textColor },
-          grid: { color: gridColor }
-        },
-        y: {
-          stacked: true,
-          ticks: { color: textColor, stepSize: 1 },
-          grid: { color: gridColor }
-        }
-      }
+        x: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } },
+        y: { stacked: true, ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+      },
     };
 
     this.horizontalBarOptions = {
@@ -480,158 +436,125 @@ export class ChartsComponent implements OnInit {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (ctx: any) => ` ${ctx.parsed.x} configurazioni`
-          }
-        }
+            label: (ctx: any) => ` ${ctx.parsed.x} ${tooltipLabel}`,
+          },
+        },
       },
       scales: {
-        x: {
-          ticks: { color: textColor, stepSize: 1 },
-          grid: { color: gridColor }
-        },
-        y: {
-          ticks: { color: textColor, font: { size: 12 } },
-          grid: { display: false }
-        }
-      }
+        x: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+        y: { ticks: { color: textColor, font: { size: 12 } }, grid: { display: false } },
+      },
     };
   }
 
   loadData() {
     this.loading = true;
-
     this.oscService.listConfigs({}).subscribe({
       next: (configs: any[]) => {
-        this.totalConfigs = configs.length;
-
-        // --- Conta per categoria ---
-        const catMap = new Map<string, number>();
-        let noCategory = 0;
-        configs.forEach(c => {
-          const cat = c.category?.trim() || null;
-          if (cat) {
-            catMap.set(cat, (catMap.get(cat) || 0) + 1);
-          } else {
-            noCategory++;
-          }
-        });
-        this.uncategorized = noCategory;
-        this.totalCategories = catMap.size;
-
-        // --- Conta per ambiente ---
-        const envMap = new Map<string, number>();
-        configs.forEach(c => {
-          const env = c.environment?.trim() || '(nessuno)';
-          envMap.set(env, (envMap.get(env) || 0) + 1);
-        });
-        this.totalEnvironments = envMap.size;
-
-        // Ordina per count desc
-        this.categoryData = [...catMap.entries()]
-          .map(([label, count]) => ({ label, count }))
-          .sort((a, b) => b.count - a.count);
-
-        this.environmentData = [...envMap.entries()]
-          .map(([label, count]) => ({ label, count }))
-          .sort((a, b) => b.count - a.count);
-
-        // Build chart data
-        this.buildCategoryChart();
-        this.buildEnvironmentChart();
-        this.buildStackedBar(configs);
-        this.buildHorizontalBar();
-
+        this.cachedConfigs = configs;
+        this.buildAllCharts(configs);
         this.loading = false;
       },
-      error: () => {
-        this.loading = false;
-      }
+      error: () => { this.loading = false; },
     });
   }
 
+  private buildAllCharts(configs: any[]) {
+    const noEnvLabel = this.t.charts.noEnvironment;
+
+    this.totalConfigs = configs.length;
+
+    // Category map
+    const catMap = new Map<string, number>();
+    let noCategory = 0;
+    configs.forEach(c => {
+      const cat = c.category?.trim() || null;
+      if (cat) catMap.set(cat, (catMap.get(cat) || 0) + 1);
+      else noCategory++;
+    });
+    this.uncategorized   = noCategory;
+    this.totalCategories = catMap.size;
+
+    // Environment map
+    const envMap = new Map<string, number>();
+    configs.forEach(c => {
+      const env = c.environment?.trim() || noEnvLabel;
+      envMap.set(env, (envMap.get(env) || 0) + 1);
+    });
+    this.totalEnvironments = envMap.size;
+
+    this.categoryData = [...catMap.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    this.environmentData = [...envMap.entries()]
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    this.buildCategoryChart();
+    this.buildEnvironmentChart();
+    this.buildStackedBar(configs, noEnvLabel);
+    this.buildHorizontalBar();
+  }
+
   private buildCategoryChart() {
-    if (this.categoryData.length === 0) { this.categoryChartData = null; return; }
-
+    if (!this.categoryData.length) { this.categoryChartData = null; return; }
     const labels = this.categoryData.map(d => this.truncate(d.label, 25));
-    const data = this.categoryData.map(d => d.count);
-    const bg = this.categoryData.map((_, i) => this.PALETTE[i % this.PALETTE.length]);
-
+    const data   = this.categoryData.map(d => d.count);
+    const bg     = this.categoryData.map((_, i) => this.PALETTE[i % this.PALETTE.length]);
     this.categoryChartData = {
       labels,
-      datasets: [{
-        data,
-        backgroundColor: bg,
-        hoverBackgroundColor: bg.map(c => c + 'cc'),
-        borderWidth: 2,
-        borderColor: 'transparent'
-      }]
+      datasets: [{ data, backgroundColor: bg, hoverBackgroundColor: bg.map(c => c + 'cc'), borderWidth: 2, borderColor: 'transparent' }],
     };
   }
 
   private buildEnvironmentChart() {
-    if (this.environmentData.length === 0) { this.environmentChartData = null; return; }
-
+    if (!this.environmentData.length) { this.environmentChartData = null; return; }
     const labels = this.environmentData.map(d => d.label);
-    const data = this.environmentData.map(d => d.count);
-    const bg = this.environmentData.map((_, i) => this.PALETTE[(i + 5) % this.PALETTE.length]);
-
+    const data   = this.environmentData.map(d => d.count);
+    const bg     = this.environmentData.map((_, i) => this.PALETTE[(i + 5) % this.PALETTE.length]);
     this.environmentChartData = {
       labels,
-      datasets: [{
-        data,
-        backgroundColor: bg,
-        hoverBackgroundColor: bg.map(c => c + 'cc'),
-        borderWidth: 2,
-        borderColor: 'transparent'
-      }]
+      datasets: [{ data, backgroundColor: bg, hoverBackgroundColor: bg.map(c => c + 'cc'), borderWidth: 2, borderColor: 'transparent' }],
     };
   }
 
-  private buildStackedBar(configs: any[]) {
-    const envs = this.environmentData.map(d => d.label);
-    const cats = this.categoryData.map(d => d.label);
+  private buildStackedBar(configs: any[], noEnvLabel: string) {
+    const envs    = this.environmentData.map(d => d.label);
+    const cats    = this.categoryData.map(d => d.label);
+    if (!envs.length || !cats.length) { this.stackedBarData = null; return; }
 
-    if (envs.length === 0 || cats.length === 0) { this.stackedBarData = null; return; }
-
-    // Max 10 categorie per leggibilità
     const topCats = cats.slice(0, 10);
-
-    const datasets = topCats.map((cat, i) => {
-      const data = envs.map(env => {
-        return configs.filter(c =>
+    const datasets = topCats.map((cat, i) => ({
+      label: this.truncate(cat, 20),
+      data: envs.map(env =>
+        configs.filter(c =>
           (c.category?.trim() === cat) &&
-          ((c.environment?.trim() || '(nessuno)') === env)
-        ).length;
-      });
-      return {
-        label: this.truncate(cat, 20),
-        data,
-        backgroundColor: this.PALETTE[i % this.PALETTE.length],
-        borderRadius: 4
-      };
-    });
+          ((c.environment?.trim() || noEnvLabel) === env)
+        ).length
+      ),
+      backgroundColor: this.PALETTE[i % this.PALETTE.length],
+      borderRadius: 4,
+    }));
 
     this.stackedBarData = { labels: envs, datasets };
   }
 
   private buildHorizontalBar() {
-    if (this.categoryData.length === 0) { this.horizontalBarData = null; return; }
-
-    // Top 15
-    const top = this.categoryData.slice(0, 15);
+    if (!this.categoryData.length) { this.horizontalBarData = null; return; }
+    const top    = this.categoryData.slice(0, 15);
     const labels = top.map(d => this.truncate(d.label, 30));
-    const data = top.map(d => d.count);
-    const bg = top.map((_, i) => this.PALETTE[i % this.PALETTE.length]);
-
+    const data   = top.map(d => d.count);
+    const bg     = top.map((_, i) => this.PALETTE[i % this.PALETTE.length]);
     this.horizontalBarData = {
       labels,
       datasets: [{
-        label: 'Configurazioni',
+        label: this.t.charts.configurations,
         data,
         backgroundColor: bg,
         borderRadius: 6,
-        borderSkipped: false
-      }]
+        borderSkipped: false,
+      }],
     };
   }
 

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
@@ -8,7 +8,10 @@ import { DropdownModule } from 'primeng/dropdown';
 import { CheckboxModule } from 'primeng/checkbox';
 import { ToastModule } from 'primeng/toast';
 import { MessageService } from 'primeng/api';
+import { Subscription } from 'rxjs';
 import { OpenSecureConfService } from '../../services/opensecureconf.service';
+import { LanguageService } from '../../services/language.service';
+import { Language, Translations } from '../../i18n/translations';
 
 @Component({
   selector: 'app-backup',
@@ -21,7 +24,7 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
     InputTextareaModule,
     DropdownModule,
     CheckboxModule,
-    ToastModule
+    ToastModule,
   ],
   providers: [MessageService],
   template: `
@@ -33,55 +36,56 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
           <div>
             <h1>
               <i class="pi pi-download"></i>
-              Backup & Import
+              {{ t.backup.title }}
             </h1>
-            <p>Gestisci import ed export delle configurazioni</p>
+            <p>{{ t.backup.subtitle }}</p>
           </div>
         </div>
       </div>
 
       <div class="backup-grid">
-        <!-- EXPORT Section -->
+
+        <!-- ── EXPORT ─────────────────────────────────────────────────────── -->
         <div class="backup-card">
           <div class="card-header">
             <div class="header-icon">
               <i class="pi pi-cloud-download"></i>
             </div>
-            <span>Esporta Configurazioni</span>
+            <span>{{ t.backup.cardExportTitle }}</span>
           </div>
-          
+
           <div class="card-body">
             <div class="info-banner">
               <i class="pi pi-info-circle"></i>
-              <span>Crea un backup crittografato delle configurazioni selezionate</span>
+              <span>{{ t.backup.exportInfoBanner }}</span>
             </div>
 
             <div class="form-field">
-              <label for="exportEnvironment">Environment (opzionale)</label>
+              <label for="exportEnvironment">{{ t.backup.exportEnvLabel }}</label>
               <p-dropdown
                 id="exportEnvironment"
                 [options]="environmentOptions"
                 [(ngModel)]="selectedExportEnvironment"
-                placeholder="Tutti gli environment"
+                [placeholder]="t.backup.exportEnvPlaceholder"
                 [showClear]="true"
-                styleClass="w-full custom-dropdown"
-              ></p-dropdown>
+                styleClass="w-full custom-dropdown">
+              </p-dropdown>
             </div>
 
             <div class="form-field">
-              <label for="exportCategory">Categoria (opzionale)</label>
+              <label for="exportCategory">{{ t.backup.exportCatLabel }}</label>
               <p-dropdown
                 id="exportCategory"
                 [options]="categoryOptions"
                 [(ngModel)]="selectedExportCategory"
-                placeholder="Tutte le categorie"
+                [placeholder]="t.backup.exportCatPlaceholder"
                 [showClear]="true"
-                styleClass="w-full custom-dropdown"
-              ></p-dropdown>
+                styleClass="w-full custom-dropdown">
+              </p-dropdown>
             </div>
 
             <div class="form-field">
-              <label for="exportPassword">Password Backup *</label>
+              <label for="exportPassword">{{ t.backup.exportPasswordLabel }}</label>
               <span class="p-input-icon-right w-full">
                 <i class="pi pi-lock"></i>
                 <input
@@ -89,7 +93,7 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
                   type="password"
                   pInputText
                   [(ngModel)]="exportPassword"
-                  placeholder="Inserisci password per crittografia"
+                  [placeholder]="t.backup.exportPasswordPlaceholder"
                   class="w-full"
                 />
               </span>
@@ -98,53 +102,53 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
             <div class="filter-summary" *ngIf="selectedExportEnvironment || selectedExportCategory">
               <i class="pi pi-filter"></i>
               <span>
-                Verranno esportate solo le configurazioni
-                <strong *ngIf="selectedExportEnvironment">dell'environment "{{ selectedExportEnvironment }}"</strong>
-                <strong *ngIf="selectedExportCategory">della categoria "{{ selectedExportCategory }}"</strong>
+                {{ t.backup.filterSummaryPrefix }}
+                <strong *ngIf="selectedExportEnvironment">&nbsp;{{ t.backup.filterSummaryEnv }} "{{ selectedExportEnvironment }}"</strong>
+                <strong *ngIf="selectedExportCategory">&nbsp;{{ t.backup.filterSummaryCat }} "{{ selectedExportCategory }}"</strong>
               </span>
             </div>
 
             <button
               pButton
-              label="Genera Backup"
+              [label]="t.backup.btnGenerateBackup"
               icon="pi pi-download"
               class="w-full action-button export-button"
               (click)="exportBackup()"
               [disabled]="!exportPassword || isExporting"
-              [loading]="isExporting"
-            ></button>
+              [loading]="isExporting">
+            </button>
           </div>
         </div>
 
-        <!-- IMPORT Section -->
+        <!-- ── IMPORT (paste) ────────────────────────────────────────────── -->
         <div class="backup-card">
           <div class="card-header">
             <div class="header-icon import-icon">
               <i class="pi pi-cloud-upload"></i>
             </div>
-            <span>Importa Configurazioni</span>
+            <span>{{ t.backup.cardImportTitle }}</span>
           </div>
-          
+
           <div class="card-body">
             <div class="info-banner info-banner-import">
               <i class="pi pi-info-circle"></i>
-              <span>Ripristina configurazioni da un backup crittografato</span>
+              <span>{{ t.backup.importInfoBanner }}</span>
             </div>
 
             <div class="form-field">
-              <label for="importData">Dati Backup *</label>
+              <label for="importData">{{ t.backup.importDataLabel }}</label>
               <textarea
                 id="importData"
                 pInputTextarea
                 [(ngModel)]="importData"
-                placeholder="Incolla qui i dati del backup..."
+                [placeholder]="t.backup.importDataPlaceholder"
                 rows="6"
-                class="w-full"
-              ></textarea>
+                class="w-full">
+              </textarea>
             </div>
 
             <div class="form-field">
-              <label for="importPassword">Password Backup *</label>
+              <label for="importPassword">{{ t.backup.importPasswordLabel }}</label>
               <span class="p-input-icon-right w-full">
                 <i class="pi pi-lock"></i>
                 <input
@@ -152,7 +156,7 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
                   type="password"
                   pInputText
                   [(ngModel)]="importPassword"
-                  placeholder="Password del backup"
+                  [placeholder]="t.backup.importPasswordPlaceholder"
                   class="w-full"
                 />
               </span>
@@ -162,97 +166,98 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
               <p-checkbox
                 [(ngModel)]="overwrite"
                 [binary]="true"
-                inputId="overwrite"
-              ></p-checkbox>
-              <label for="overwrite">Sovrascrivi configurazioni esistenti</label>
+                inputId="overwrite">
+              </p-checkbox>
+              <label for="overwrite">{{ t.backup.importOverwriteLabel }}</label>
             </div>
 
             <button
               pButton
-              label="Importa Backup"
+              [label]="t.backup.btnImportBackup"
               icon="pi pi-upload"
               class="w-full action-button import-button"
               (click)="importBackup()"
               [disabled]="!importData || !importPassword || isImporting"
-              [loading]="isImporting"
-            ></button>
+              [loading]="isImporting">
+            </button>
           </div>
         </div>
-      </div>
 
-      <!-- IMPORT FROM FILE Section -->
-      <div class="backup-card full-width">
-        <div class="card-header">
-          <div class="header-icon file-icon">
-            <i class="pi pi-file"></i>
-          </div>
-          <span>Importa da File</span>
-        </div>
-        
-        <div class="card-body">
-          <div class="info-banner info-banner-file">
-            <i class="pi pi-info-circle"></i>
-            <span>Carica un file di backup (.json o .txt)</span>
+        <!-- ── IMPORT FROM FILE ───────────────────────────────────────────── -->
+        <div class="backup-card full-width">
+          <div class="card-header">
+            <div class="header-icon file-icon">
+              <i class="pi pi-file"></i>
+            </div>
+            <span>{{ t.backup.cardFileTitle }}</span>
           </div>
 
-          <div class="file-upload-section">
-            <div class="form-field">
-              <label for="fileInput">Seleziona File Backup</label>
-              <div class="file-input-wrapper">
-                <input
-                  type="file"
-                  id="fileInput"
-                  accept=".json,.txt"
-                  (change)="onFileSelect($event)"
-                  class="file-input"
-                />
-                <div class="file-input-display">
-                  <i class="pi pi-cloud-upload"></i>
-                  <span *ngIf="!uploadedFileName" class="file-placeholder">
-                    Nessun file selezionato
-                  </span>
-                  <span *ngIf="uploadedFileName" class="file-name">
-                    {{ uploadedFileName }}
-                  </span>
+          <div class="card-body">
+            <div class="info-banner info-banner-file">
+              <i class="pi pi-info-circle"></i>
+              <span>{{ t.backup.fileInfoBanner }}</span>
+            </div>
+
+            <div class="file-upload-section">
+              <div class="form-field">
+                <label for="fileInput">{{ t.backup.fileSelectLabel }}</label>
+                <div class="file-input-wrapper">
+                  <input
+                    type="file"
+                    id="fileInput"
+                    accept=".json,.txt"
+                    (change)="onFileSelect($event)"
+                    class="file-input"
+                  />
+                  <div class="file-input-display">
+                    <i class="pi pi-cloud-upload"></i>
+                    <span *ngIf="!uploadedFileName" class="file-placeholder">
+                      {{ t.backup.fileNoFileSelected }}
+                    </span>
+                    <span *ngIf="uploadedFileName" class="file-name">
+                      {{ uploadedFileName }}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="form-field" *ngIf="uploadedFileName">
-              <label for="filePassword">Password Backup *</label>
-              <span class="p-input-icon-right w-full">
-                <i class="pi pi-lock"></i>
-                <input
-                  id="filePassword"
-                  type="password"
-                  pInputText
-                  [(ngModel)]="fileImportPassword"
-                  placeholder="Password del backup"
-                  class="w-full"
-                />
-              </span>
-            </div>
+              <div class="form-field" *ngIf="uploadedFileName">
+                <label for="filePassword">{{ t.backup.filePasswordLabel }}</label>
+                <span class="p-input-icon-right w-full">
+                  <i class="pi pi-lock"></i>
+                  <input
+                    id="filePassword"
+                    type="password"
+                    pInputText
+                    [(ngModel)]="fileImportPassword"
+                    [placeholder]="t.backup.filePasswordPlaceholder"
+                    class="w-full"
+                  />
+                </span>
+              </div>
 
-            <div class="checkbox-field" *ngIf="uploadedFileName">
-              <p-checkbox
-                [(ngModel)]="fileOverwrite"
-                [binary]="true"
-                inputId="fileOverwrite"
-              ></p-checkbox>
-              <label for="fileOverwrite">Sovrascrivi configurazioni esistenti</label>
-            </div>
+              <div class="checkbox-field" *ngIf="uploadedFileName">
+                <p-checkbox
+                  [(ngModel)]="fileOverwrite"
+                  [binary]="true"
+                  inputId="fileOverwrite">
+                </p-checkbox>
+                <label for="fileOverwrite">{{ t.backup.fileOverwriteLabel }}</label>
+              </div>
 
-            <button
-              pButton
-              label="Importa da File"
-              icon="pi pi-upload"
-              class="w-full action-button file-button"
-              (click)="importFromFile()"
-              [disabled]="!fileImportPassword || isImporting"
-              [loading]="isImporting"
-            ></button>
+              <button
+                pButton
+                [label]="t.backup.btnImportFromFile"
+                icon="pi pi-upload"
+                class="w-full action-button file-button"
+                (click)="importFromFile()"
+                [disabled]="!fileImportPassword || isImporting"
+                [loading]="isImporting">
+              </button>
+            </div>
           </div>
         </div>
+
       </div>
     </div>
   `,
@@ -263,7 +268,6 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       margin: 0 auto;
       animation: fadeInUp 0.5s ease-out;
     }
-
 
     .page-header {
       margin-bottom: 2rem;
@@ -290,54 +294,22 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       gap: 0.75rem;
     }
 
-    .page-header h1 i {
-      color: #667eea;
-    }
+    .page-header h1 i { color: #667eea; }
 
     .page-header p {
       color: var(--text-secondary);
       margin: 0;
       font-size: 1.1rem;
     }
-      
-    .header-content h1 {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      font-size: 2rem;
-      font-weight: 700;
-      margin: 0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .header-content h1 i {
-      font-size: 1.75rem;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .header-content p {
-      color: var(--text-secondary);
-      margin: 0.5rem 0 0 0;
-      font-size: 1rem;
-    }
 
     .backup-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      grid-template-columns: 1fr 1fr;
       gap: 2rem;
-      margin-bottom: 2rem;
     }
 
-    @media (max-width: 1024px) {
-      .backup-grid {
-        grid-template-columns: 1fr;
-      }
+    @media (max-width: 900px) {
+      .backup-grid { grid-template-columns: 1fr; }
     }
 
     .backup-card {
@@ -345,12 +317,6 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       border-radius: 16px;
       box-shadow: 0 4px 20px var(--shadow-sm);
       overflow: hidden;
-      transition: all 0.3s ease;
-    }
-
-    .backup-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 8px 30px var(--shadow-md);
     }
 
     .backup-card.full-width {
@@ -361,7 +327,7 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       display: flex;
       align-items: center;
       gap: 1rem;
-      padding: 1.5rem;
+      padding: 1.5rem 2rem;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       font-size: 1.25rem;
@@ -372,82 +338,71 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       width: 48px;
       height: 48px;
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(255,255,255,0.2);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 1.5rem;
+      flex-shrink: 0;
     }
 
-    .import-icon {
-      background: rgba(67, 233, 123, 0.2);
-    }
-
-    .file-icon {
-      background: rgba(79, 172, 254, 0.2);
-    }
+    .import-icon { background: rgba(255,255,255,0.2); }
+    .file-icon   { background: rgba(255,255,255,0.2); }
 
     .card-body {
       padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
     }
 
     .info-banner {
       display: flex;
       align-items: flex-start;
       gap: 0.75rem;
-      padding: 1rem;
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-      border-left: 4px solid #667eea;
-      border-radius: 8px;
-      margin-bottom: 1.5rem;
-      color: var(--text-primary);
+      padding: 1rem 1.25rem;
+      background: rgba(102, 126, 234, 0.08);
+      border-left: 3px solid #667eea;
+      border-radius: 0 8px 8px 0;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
     }
 
-    .info-banner i {
-      color: #667eea;
-      font-size: 1.25rem;
-      flex-shrink: 0;
-      margin-top: 0.1rem;
-    }
+    .info-banner i { color: #667eea; flex-shrink: 0; margin-top: 0.1rem; }
 
     .info-banner-import {
-      background: linear-gradient(135deg, rgba(67, 233, 123, 0.1) 0%, rgba(56, 249, 215, 0.1) 100%);
-      border-left-color: #43e97b;
-    }
-
-    .info-banner-import i {
-      color: #43e97b;
-    }
-
-    .info-banner-file {
-      background: linear-gradient(135deg, rgba(79, 172, 254, 0.1) 0%, rgba(0, 242, 254, 0.1) 100%);
+      background: rgba(79, 172, 254, 0.08);
       border-left-color: #4facfe;
     }
 
-    .info-banner-file i {
-      color: #4facfe;
+    .info-banner-import i { color: #4facfe; }
+
+    .info-banner-file {
+      background: rgba(250, 112, 154, 0.08);
+      border-left-color: #fa709a;
     }
 
+    .info-banner-file i { color: #fa709a; }
+
     .form-field {
-      margin-bottom: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
 
     .form-field label {
-      display: block;
-      margin-bottom: 0.5rem;
       font-weight: 600;
-      color: var(--text-primary);
-      font-size: 0.875rem;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
     }
 
     .checkbox-field {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      margin-bottom: 1.5rem;
-      padding: 1rem;
+      padding: 0.75rem;
       background: var(--bg-secondary);
       border-radius: 8px;
     }
@@ -467,29 +422,16 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       padding: 1rem;
       background: var(--bg-secondary);
       border-radius: 8px;
-      margin-bottom: 1.5rem;
       color: var(--text-secondary);
       font-size: 0.875rem;
     }
 
-    .filter-summary i {
-      color: #667eea;
-      flex-shrink: 0;
-      margin-top: 0.2rem;
-    }
+    .filter-summary i { color: #667eea; flex-shrink: 0; margin-top: 0.2rem; }
+    .filter-summary strong { color: var(--text-primary); font-weight: 600; }
 
-    .filter-summary strong {
-      color: var(--text-primary);
-      font-weight: 600;
-    }
+    .file-upload-section { margin-top: 0; }
 
-    .file-upload-section {
-      margin-top: 1rem;
-    }
-
-    .file-input-wrapper {
-      position: relative;
-    }
+    .file-input-wrapper { position: relative; }
 
     .file-input {
       position: absolute;
@@ -518,22 +460,12 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
       background: var(--hover-bg);
     }
 
-    .file-input-display i {
-      font-size: 1.5rem;
-      color: #667eea;
-    }
-
-    .file-placeholder {
-      color: var(--text-secondary);
-    }
-
-    .file-name {
-      color: var(--text-primary);
-      font-weight: 600;
-    }
+    .file-input-display i { font-size: 1.5rem; color: #667eea; }
+    .file-placeholder { color: var(--text-secondary); }
+    .file-name { color: var(--text-primary); font-weight: 600; }
 
     .action-button {
-      margin-top: 1rem;
+      margin-top: 0.5rem;
       padding: 0.875rem 1.5rem !important;
       font-weight: 600 !important;
       font-size: 1rem !important;
@@ -575,102 +507,34 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
     }
 
     @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(30px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* PrimeNG Overrides */
     :host ::ng-deep {
-      .w-full {
-        width: 100%;
-      }
-
-      /* Input Text Styling */
-      .p-inputtext {
-        width: 100%;
-        background: var(--card-bg) !important;
+      .p-inputtext, .p-inputtextarea {
+        background: var(--bg-secondary) !important;
         border: 1px solid var(--border-color) !important;
         color: var(--text-primary) !important;
-        padding: 0.75rem 1rem !important;
         border-radius: 8px !important;
         transition: all 0.3s ease !important;
       }
 
-      .p-inputtext:enabled:hover {
-        border-color: #667eea !important;
-      }
-
-      .p-inputtext:enabled:focus {
+      .p-inputtext:focus, .p-inputtextarea:focus {
         border-color: #667eea !important;
         box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
       }
 
-      .p-inputtext::placeholder {
-        color: var(--text-secondary) !important;
-      }
-
-      /* Textarea Styling */
-      .p-inputtextarea {
-        background: var(--card-bg) !important;
-        border: 1px solid var(--border-color) !important;
-        color: var(--text-primary) !important;
-        padding: 0.75rem 1rem !important;
-        border-radius: 8px !important;
-        transition: all 0.3s ease !important;
-        font-family: 'Courier New', monospace !important;
-      }
-
-      .p-inputtextarea:enabled:hover {
-        border-color: #667eea !important;
-      }
-
-      .p-inputtextarea:enabled:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
-      }
-
-      /* Dropdown Styling */
-      .p-dropdown {
-        background: var(--card-bg) !important;
+      .custom-dropdown.p-dropdown {
+        background: var(--bg-secondary) !important;
         border: 1px solid var(--border-color) !important;
         border-radius: 8px !important;
-        transition: all 0.3s ease !important;
       }
 
-      .p-dropdown:not(.p-disabled):hover {
-        border-color: #667eea !important;
-      }
-
-      .p-dropdown:not(.p-disabled).p-focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
-      }
-
-      .p-dropdown .p-dropdown-label {
+      .custom-dropdown.p-dropdown .p-dropdown-label {
         color: var(--text-primary) !important;
-        padding: 0.75rem 1rem !important;
       }
 
-      .p-dropdown .p-dropdown-label.p-placeholder {
-        color: var(--text-secondary) !important;
-      }
-
-      .p-dropdown .p-dropdown-trigger {
-        color: var(--text-primary) !important;
-        width: 3rem !important;
-      }
-
-      .p-dropdown .p-dropdown-clear-icon {
-        color: var(--text-secondary) !important;
-      }
-
-      /* Dropdown Panel */
       .p-dropdown-panel {
         background: var(--card-bg) !important;
         border: 1px solid var(--border-color) !important;
@@ -678,14 +542,9 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
         border-radius: 8px !important;
       }
 
-      .p-dropdown-panel .p-dropdown-items {
-        padding: 0.5rem 0 !important;
-      }
-
       .p-dropdown-panel .p-dropdown-item {
         color: var(--text-primary) !important;
         padding: 0.75rem 1rem !important;
-        transition: all 0.2s !important;
       }
 
       .p-dropdown-panel .p-dropdown-item:not(.p-disabled):hover {
@@ -698,28 +557,11 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
         color: #667eea !important;
       }
 
-      .p-dropdown-panel .p-dropdown-empty-message {
-        color: var(--text-secondary) !important;
-        padding: 1rem !important;
-      }
-
-      /* Checkbox Styling */
-      .p-checkbox {
-        width: 20px !important;
-        height: 20px !important;
-      }
-
       .p-checkbox .p-checkbox-box {
-        width: 20px !important;
-        height: 20px !important;
         background: var(--card-bg) !important;
         border: 2px solid var(--border-color) !important;
         border-radius: 4px !important;
         transition: all 0.3s ease !important;
-      }
-
-      .p-checkbox .p-checkbox-box:not(.p-disabled):hover {
-        border-color: #667eea !important;
       }
 
       .p-checkbox .p-checkbox-box.p-highlight {
@@ -727,35 +569,18 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
         border-color: #667eea !important;
       }
 
-      .p-checkbox .p-checkbox-box .p-checkbox-icon {
-        color: white !important;
-      }
+      .p-checkbox .p-checkbox-box .p-checkbox-icon { color: white !important; }
 
-      .p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box.p-focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25) !important;
-      }
-
-      /* Input Icon Right */
       .p-input-icon-right > i:last-of-type {
         right: 1rem !important;
         color: var(--text-secondary) !important;
       }
 
-      .p-input-icon-right > .p-inputtext {
-        padding-right: 3rem !important;
-      }
+      .p-input-icon-right > .p-inputtext { padding-right: 3rem !important; }
 
-      /* Button Disabled State */
-      .p-button:disabled {
-        opacity: 0.5 !important;
-        cursor: not-allowed !important;
-      }
+      .p-button:disabled { opacity: 0.5 !important; cursor: not-allowed !important; }
 
-      /* Toast Messages */
-      .p-toast {
-        opacity: 0.98 !important;
-      }
+      .p-toast { opacity: 0.98 !important; }
 
       .p-toast .p-toast-message {
         backdrop-filter: blur(10px) !important;
@@ -765,14 +590,15 @@ import { OpenSecureConfService } from '../../services/opensecureconf.service';
     }
   `]
 })
-export class BackupComponent implements OnInit {
+export class BackupComponent implements OnInit, OnDestroy {
+
   exportPassword = '';
   importData = '';
   importPassword = '';
   overwrite = false;
   isExporting = false;
   isImporting = false;
-  
+
   uploadedFileName = '';
   uploadedFileContent = '';
   fileImportPassword = '';
@@ -780,106 +606,94 @@ export class BackupComponent implements OnInit {
 
   selectedExportEnvironment: string | null = null;
   selectedExportCategory: string | null = null;
-  environments: string[] = [];
-  categories: string[] = [];
-  
+
   environmentOptions: Array<{ label: string; value: string }> = [];
-  categoryOptions: Array<{ label: string; value: string }> = [];
+  categoryOptions:    Array<{ label: string; value: string }> = [];
+
+  t!: Translations;
+  private langSub!: Subscription;
 
   constructor(
-    private oscService: OpenSecureConfService,
-    private messageService: MessageService
+    private oscService:     OpenSecureConfService,
+    private messageService: MessageService,
+    private langService:    LanguageService,
   ) {}
 
   ngOnInit(): void {
+    this.t = this.langService.getTranslations();
+    this.langSub = this.langService.lang$.subscribe((lang: Language) => {
+      this.t = this.langService.t(lang);
+    });
     this.loadFilters();
   }
+
+  ngOnDestroy(): void {
+    this.langSub?.unsubscribe();
+  }
+
+  // ── Filters ───────────────────────────────────────────────────────────────
 
   loadFilters(): void {
     this.oscService.listEnvironments().subscribe({
       next: (envs) => {
-        this.environments = envs;
         this.environmentOptions = envs.map(env => ({ label: env, value: env }));
       },
-      error: (error) => {
-        console.error('Errore caricamento environments:', error);
-      }
+      error: (err) => console.error('Errore caricamento environments:', err),
     });
 
     this.oscService.listCategories().subscribe({
       next: (cats) => {
-        this.categories = cats;
         this.categoryOptions = cats.map(cat => ({ label: cat, value: cat }));
       },
-      error: (error) => {
-        console.error('Errore caricamento categorie:', error);
-      }
+      error: (err) => console.error('Errore caricamento categorie:', err),
     });
   }
 
+  // ── Export ────────────────────────────────────────────────────────────────
+
   exportBackup(): void {
     if (!this.exportPassword) {
-      this.messageService.add({
-        severity: 'warn',
-        summary: 'Attenzione',
-        detail: 'Inserisci una password per il backup'
-      });
+      this.warn(this.t.backup.toastWarnNeedPassword);
       return;
     }
 
     this.isExporting = true;
 
-    const filters: any = {};
-    if (this.selectedExportEnvironment) {
-      filters.environment = this.selectedExportEnvironment;
-    }
-    if (this.selectedExportCategory) {
-      filters.category = this.selectedExportCategory;
-    }
+    const filters: Record<string, string> = {};
+    if (this.selectedExportEnvironment) filters['environment'] = this.selectedExportEnvironment;
+    if (this.selectedExportCategory)    filters['category']    = this.selectedExportCategory;
 
     this.oscService.exportBackup(this.exportPassword, filters).subscribe({
       next: (response: any) => {
-        // Estrai la stringa backup_data dall'oggetto risposta
         const backupData = response.backup_data || JSON.stringify(response);
         const blob = new Blob([backupData], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
+        const url  = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = url;
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        link.download = `opensecureconf-backup-${timestamp}.json`;
+        link.href  = url;
+        const ts   = new Date().toISOString().replace(/[:.]/g, '-');
+        link.download = `opensecureconf-backup-${ts}.json`;
         link.click();
         window.URL.revokeObjectURL(url);
 
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Successo',
-          detail: 'Backup generato e scaricato con successo'
-        });
-
-        this.exportPassword = '';
+        this.success(this.t.backup.toastExportSuccess);
+        this.exportPassword            = '';
         this.selectedExportEnvironment = null;
-        this.selectedExportCategory = null;
+        this.selectedExportCategory    = null;
+        this.isExporting               = false;
+      },
+      error: (err) => {
+        console.error('Errore export:', err);
+        this.error(this.t.backup.toastExportError);
         this.isExporting = false;
       },
-      error: (error) => {
-        console.error('Errore export:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Errore',
-          detail: 'Errore durante la generazione del backup'
-        });
-        this.isExporting = false;
-      }
     });
   }
 
+  // ── Import (paste) ────────────────────────────────────────────────────────
+
   importBackup(): void {
     if (!this.importData || !this.importPassword) {
-      this.messageService.add({
-        severity: 'warn',
-        summary: 'Attenzione',
-        detail: 'Inserisci i dati del backup e la password'
-      });
+      this.warn(this.t.backup.toastWarnNeedDataAndPw);
       return;
     }
 
@@ -887,44 +701,41 @@ export class BackupComponent implements OnInit {
 
     this.oscService.importBackup(this.importData, this.importPassword, this.overwrite).subscribe({
       next: (result) => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Successo',
-          detail: `Importate ${result.imported} configurazioni, saltate ${result.skipped}`
-        });
+        this.success(this.interpolate(this.t.backup.toastImportSuccess, {
+          imported: String(result.imported),
+          skipped:  String(result.skipped),
+        }));
 
-        if (result.errors && result.errors.length > 0) {
+        if (result.errors?.length > 0) {
           this.messageService.add({
             severity: 'warn',
-            summary: 'Attenzione',
-            detail: `${result.errors.length} configurazioni non importate`
+            summary:  this.t.backup.toastWarnSummary,
+            detail:   this.interpolate(this.t.backup.toastImportPartial, { count: String(result.errors.length) }),
           });
         }
 
-        this.importData = '';
+        this.importData     = '';
         this.importPassword = '';
-        this.overwrite = false;
+        this.overwrite      = false;
+        this.isImporting    = false;
+      },
+      error: (err) => {
+        console.error('Errore import:', err);
+        this.error(this.t.backup.toastImportError);
         this.isImporting = false;
       },
-      error: (error) => {
-        console.error('Errore import:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Errore',
-          detail: 'Errore durante l\'importazione del backup'
-        });
-        this.isImporting = false;
-      }
     });
   }
 
-  onFileSelect(event: any): void {
-    const file = event.target.files[0];
+  // ── Import from file ──────────────────────────────────────────────────────
+
+  onFileSelect(event: Event): void {
+    const file = (event.target as HTMLInputElement).files?.[0];
     if (file) {
       this.uploadedFileName = file.name;
       const reader = new FileReader();
-      reader.onload = (e: any) => {
-        this.uploadedFileContent = e.target.result;
+      reader.onload = (e: ProgressEvent<FileReader>) => {
+        this.uploadedFileContent = e.target?.result as string;
       };
       reader.readAsText(file);
     }
@@ -932,11 +743,7 @@ export class BackupComponent implements OnInit {
 
   importFromFile(): void {
     if (!this.uploadedFileContent || !this.fileImportPassword) {
-      this.messageService.add({
-        severity: 'warn',
-        summary: 'Attenzione',
-        detail: 'Seleziona un file e inserisci la password'
-      });
+      this.warn(this.t.backup.toastWarnNeedFileAndPw);
       return;
     }
 
@@ -944,41 +751,52 @@ export class BackupComponent implements OnInit {
 
     this.oscService.importBackup(this.uploadedFileContent, this.fileImportPassword, this.fileOverwrite).subscribe({
       next: (result) => {
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Successo',
-          detail: `Importate ${result.imported} configurazioni, saltate ${result.skipped}`
-        });
+        this.success(this.interpolate(this.t.backup.toastImportSuccess, {
+          imported: String(result.imported),
+          skipped:  String(result.skipped),
+        }));
 
-        if (result.errors && result.errors.length > 0) {
+        if (result.errors?.length > 0) {
           this.messageService.add({
             severity: 'warn',
-            summary: 'Attenzione',
-            detail: `${result.errors.length} configurazioni non importate`
+            summary:  this.t.backup.toastWarnSummary,
+            detail:   this.interpolate(this.t.backup.toastImportPartial, { count: String(result.errors.length) }),
           });
         }
 
-        this.uploadedFileName = '';
+        this.uploadedFileName    = '';
         this.uploadedFileContent = '';
-        this.fileImportPassword = '';
-        this.fileOverwrite = false;
-        this.isImporting = false;
+        this.fileImportPassword  = '';
+        this.fileOverwrite       = false;
+        this.isImporting         = false;
 
-        // Reset file input
         const fileInput = document.getElementById('fileInput') as HTMLInputElement;
-        if (fileInput) {
-          fileInput.value = '';
-        }
+        if (fileInput) fileInput.value = '';
       },
-      error: (error) => {
-        console.error('Errore import file:', error);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Errore',
-          detail: 'Errore durante l\'importazione del file'
-        });
+      error: (err) => {
+        console.error('Errore import file:', err);
+        this.error(this.t.backup.toastFileImportError);
         this.isImporting = false;
-      }
+      },
     });
+  }
+
+  // ── Toast helpers ─────────────────────────────────────────────────────────
+
+  private success(detail: string): void {
+    this.messageService.add({ severity: 'success', summary: this.t.backup.toastSuccessSummary, detail });
+  }
+
+  private warn(detail: string): void {
+    this.messageService.add({ severity: 'warn', summary: this.t.backup.toastWarnSummary, detail });
+  }
+
+  private error(detail: string): void {
+    this.messageService.add({ severity: 'error', summary: this.t.backup.toastErrorSummary, detail });
+  }
+
+  /** Replace {key} placeholders in a translation string */
+  private interpolate(template: string, values: Record<string, string>): string {
+    return template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? `{${key}}`);
   }
 }
